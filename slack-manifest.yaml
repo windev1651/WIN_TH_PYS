@@ -1,0 +1,29 @@
+display_information:
+  name: TH_PYS
+  description: Gestion del proceso de Paz y Salvo de Talento Humano
+  background_color: "#2F3136"
+features:
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+  bot_user:
+    display_name: Bot Paz y Salvo
+    always_online: false
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - files:read
+      - users:read
+      - lists:read
+      - lists:write
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_home_opened
+  interactivity:
+    is_enabled: true
+  socket_mode_enabled: true
+  org_deploy_enabled: false
+  token_rotation_enabled: false

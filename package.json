@@ -1,0 +1,32 @@
+{
+  "name": "th-pys-slack-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aplicacion Slack de Talento Humano - Paz y Salvo",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "dev": "tsx watch src/app.ts",
+    "start": "node dist/app.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@slack/bolt": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "pino": "^9.3.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "prettier": "^3.9.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}

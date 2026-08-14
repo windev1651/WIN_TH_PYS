@@ -1,0 +1,41 @@
+{
+  "window.title": "TH_PYS — ${activeEditorShort}${separator}${appName}",
+
+  "workbench.colorCustomizations": {
+    "titleBar.activeBackground": "#264653",
+    "titleBar.activeForeground": "#FFFFFF",
+    "titleBar.inactiveBackground": "#26465399",
+    "titleBar.inactiveForeground": "#FFFFFF99"
+  },
+
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+
+  "files.exclude": {
+    "**/node_modules": true,
+    "**/dist": true
+  },
+
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/dist": true
+  },
+
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true,
+
+  "terminal.integrated.cwd": "${workspaceFolder}"
+}
