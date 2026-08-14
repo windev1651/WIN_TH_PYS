@@ -7,14 +7,19 @@ export const logger = pino({
     app: "TH_PYS",
     environment: env.appEnv,
   },
+  timestamp: pino.stdTimeFunctions.isoTime,
+
   redact: {
     paths: [
       "token",
       "appToken",
       "authorization",
       "headers.authorization",
+      "req.headers.authorization",
       "SLACK_BOT_TOKEN",
       "SLACK_APP_TOKEN",
+      "*.token",
+      "*.appToken",
     ],
     censor: "[REDACTED]",
   },

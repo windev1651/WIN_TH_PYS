@@ -19,4 +19,8 @@ export const env = {
     festivos: process.env.TH_PYS_LIST_FESTIVOS_ID?.trim() || "",
   },
   canalThId: process.env.TH_PYS_CANAL_TH_ID?.trim() || "",
+  devAllowedUserIds:
+    process.env.DEV_ALLOWED_USER_IDS?.split(",")
+      .map((id) => id.trim())
+      .filter(Boolean) ?? [],
 } as const;
