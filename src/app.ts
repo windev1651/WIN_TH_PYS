@@ -2,6 +2,7 @@ import { App, LogLevel } from "@slack/bolt";
 import { env } from "./config/env.js";
 import { registerAppHomeListeners } from "./listeners/app-home.js";
 import { logger } from "./utils/logger.js";
+import { validateSlackConfiguration } from "./config/slack/validate.js";
 
 function boltLogLevel(value: string): LogLevel {
   switch (value.toLowerCase()) {
@@ -15,6 +16,8 @@ function boltLogLevel(value: string): LogLevel {
       return LogLevel.INFO;
   }
 }
+
+validateSlackConfiguration();
 
 const app = new App({
   token: env.slackBotToken,
