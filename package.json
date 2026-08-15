@@ -16,7 +16,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:scripts": "tsc -p tsconfig.scripts.json --noEmit",
     "test:slack-lists": "tsx scripts/test-slack-list-read.ts",
-    "validate:slack-schema": "tsx scripts/validate-slack-schema.ts"
+    "validate:slack-schema": "tsx scripts/validate-slack-schema.ts",
+    "test:master-data": "tsx scripts/test-master-data.ts"
   },
   "dependencies": {
     "@slack/bolt": "^5.0.0",
