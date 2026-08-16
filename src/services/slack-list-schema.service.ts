@@ -61,3 +61,22 @@ export async function getSelectOptionMap(
       .map((choice) => [choice.value, choice.label]),
   );
 }
+
+export async function getSelectOptionId(
+  client: WebClient,
+  listId: string,
+  columnId: string,
+  label: string,
+): Promise<string> {
+  const optionMap = await getSelectOptionMap(client, listId, columnId);
+
+  for (const [optionId, optionLabel] of optionMap) {
+    if (optionLabel === label) {
+      return optionId;
+    }
+  }
+
+  throw new Error(
+    `No existe la opción "${label}" en columna ${columnId} de lista ${listId}`,
+  );
+}
