@@ -1,110 +1,54 @@
 import type { App } from "@slack/bolt";
+
+import { getHomeData } from "../services/home-data.service.js";
+import { buildThHomeBlocks } from "../views/home-th.view.js";
 import { correlationId, logger } from "../utils/logger.js";
-import {
-  isDevUserAllowed,
-  logAccessDenied,
-} from "../security/access-control.js";
 
 export function registerAppHomeListeners(app: App): void {
   app.event("app_home_opened", async ({ event, client }) => {
     const cid = correlationId("home");
 
-    const logContext = {
-      cid,
-      userId: event.user,
-      action: "app_home_opened",
-    };
-
-    logger.info(logContext, "App Home abierto");
-
-    if (!isDevUserAllowed(event.user)) {
-      logAccessDenied(event.user, cid);
-
-      await client.views.publish({
-        user_id: event.user,
-        view: {
-          type: "home",
-          blocks: [
-            {
-              type: "header",
-              text: {
-                type: "plain_text",
-                text: "TH_PYS · Paz y Salvo",
-              },
-            },
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: "🔒 *Aplicación en construcción*\nActualmente no tienes acceso a esta aplicación.",
-              },
-            },
-          ],
-        },
-      });
-
-      return;
-    }
+    logger.info(
+      {
+        cid,
+        userId: event.user,
+        action: "app_home_opened",
+      },
+      "App Home abierto",
+    );
 
     try {
+      const data = await getHomeData(client);
+
+      const blocks = buildThHomeBlocks(data.resumen, data.procesosActivos);
+
       await client.views.publish({
         user_id: event.user,
         view: {
           type: "home",
-          blocks: [
-            {
-              type: "header",
-              text: {
-                type: "plain_text",
-                text: "TH_PYS · Paz y Salvo",
-              },
-            },
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: "*Fundación técnica activa*\nBolt + TypeScript + Socket Mode conectado correctamente.",
-              },
-            },
-            {
-              type: "context",
-              elements: [
-                {
-                  type: "mrkdwn",
-                  text: `Correlation ID: \`${cid}\``,
-                },
-              ],
-            },
-
-            {
-              type: "actions",
-              elements: [
-                {
-                  type: "button",
-                  text: {
-                    type: "plain_text",
-                    text: "Crear Paz y Salvo",
-                  },
-                  style: "primary",
-                  action_id: "pys_create_process",
-                },
-              ],
-            },
-          ],
+          blocks,
         },
       });
 
-      logger.info(logContext, "App Home publicado correctamente");
-    } catch (error) {
+      logger.info(
+        {
+          cid,
+          userId: event.user,
+          procesos: data.procesosActivos.length,
+          action: "app_home_published",
+        },
+        "App Home publicado correctamente",
+      );
+    } catch (err) {
       logger.error(
         {
-          ...logContext,
-          err: error,
+          cid,
+          userId: event.user,
+          err,
+          action: "app_home_publish_failed",
         },
         "Error publicando App Home",
       );
-
-      throw error;
     }
   });
 }

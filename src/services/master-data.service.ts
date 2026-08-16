@@ -17,9 +17,9 @@ export async function getMasterData(client: WebClient) {
   return {
     tiposSolicitud: tiposSolicitud.filter((item) => item.activo),
 
-    areas: areas.filter((item) => item.activa),
+    areas: areas.filter((item) => item.activo),
 
-    configTareas: configTareas.filter((item) => item.activa),
+    configTareas: configTareas.filter((item) => item.activo),
 
     parametros: parametros.filter((item) => item.activo),
   };

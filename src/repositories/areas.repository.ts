@@ -43,7 +43,7 @@ export async function getAreas(client: WebClient): Promise<Area[]> {
         id,
         nombre,
         responsableFuncional,
-        activa: getCheckboxField(item, slackColumns.areas.activa),
+        activo: getCheckboxField(item, slackColumns.areas.activa),
         orden: getNumberField(item, slackColumns.areas.orden) ?? 0,
       };
     })

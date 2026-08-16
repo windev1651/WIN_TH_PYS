@@ -83,7 +83,7 @@ export async function getConfigTareas(
           item,
           slackColumns.configTareas.requiereEvidencia,
         ),
-        activa: getCheckboxField(item, slackColumns.configTareas.activa),
+        activo: getCheckboxField(item, slackColumns.configTareas.activa),
         ordenArea:
           getNumberField(item, slackColumns.configTareas.ordenArea) ?? 0,
         ordenTarea:

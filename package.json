@@ -19,7 +19,8 @@
     "validate:slack-schema": "tsx scripts/validate-slack-schema.ts",
     "test:master-data": "tsx scripts/test-master-data.ts",
     "test:process-snapshot": "tsx scripts/test-process-snapshot.ts",
-    "test:process-create": "tsx scripts/test-process-create.ts"
+    "test:process-create": "tsx scripts/test-process-create.ts",
+    "test:home-data": "tsx scripts/test-home-data.ts"
   },
   "dependencies": {
     "@slack/bolt": "^5.0.0",

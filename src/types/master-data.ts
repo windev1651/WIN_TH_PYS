@@ -10,7 +10,7 @@ export type Area = {
   id: string;
   nombre: string;
   responsableFuncional: string;
-  activa: boolean;
+  activo: boolean;
   orden: number;
 };
 
@@ -22,7 +22,7 @@ export type ConfigTarea = {
   responsableOperativo: string;
   obligatoria: boolean;
   requiereEvidencia: boolean;
-  activa: boolean;
+  activo: boolean;
   ordenArea: number;
   ordenTarea: number;
   observacion: string | null;
