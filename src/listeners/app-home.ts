@@ -75,6 +75,21 @@ export function registerAppHomeListeners(app: App): void {
                 },
               ],
             },
+
+            {
+              type: "actions",
+              elements: [
+                {
+                  type: "button",
+                  text: {
+                    type: "plain_text",
+                    text: "Crear Paz y Salvo",
+                  },
+                  style: "primary",
+                  action_id: "pys_create_process",
+                },
+              ],
+            },
           ],
         },
       });
@@ -84,7 +99,7 @@ export function registerAppHomeListeners(app: App): void {
       logger.error(
         {
           ...logContext,
-          error,
+          err: error,
         },
         "Error publicando App Home",
       );

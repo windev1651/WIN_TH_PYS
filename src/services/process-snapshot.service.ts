@@ -34,12 +34,18 @@ export async function buildProcessSnapshot(
     );
   }
 
+  const activeAreaIds = new Set(masterData.areas.map((area) => area.id));
+
   const configTareas = masterData.configTareas.filter(
-    (tarea) => tarea.tipoSolicitudId === input.tipoSolicitudId,
+    (tarea) =>
+      tarea.tipoSolicitudId === input.tipoSolicitudId &&
+      activeAreaIds.has(tarea.areaId),
   );
 
   if (configTareas.length === 0) {
-    throw new Error(`No existen tareas activas para ${input.tipoSolicitudId}`);
+    throw new Error(
+      `No existen tareas activas en áreas activas para el tipo de solicitud ${input.tipoSolicitudId}`,
+    );
   }
 
   const diasHabiles = getNumberParametro(

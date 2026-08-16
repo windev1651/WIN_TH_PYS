@@ -31,7 +31,7 @@ async function rollbackCreatedItems(
         {
           listId: item.listId,
           itemId: item.itemId,
-          error,
+          err: error,
         },
         "Rollback de Slack List falló",
       );
@@ -111,7 +111,7 @@ export async function createPazYSalvo(
         cid,
         procesoId: snapshot.proceso.procesoId,
         createdItems: created.length,
-        error,
+        err: error,
         action: "process_creation_failed",
       },
       "Error creando Paz y Salvo",
