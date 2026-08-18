@@ -10,9 +10,11 @@ if (!token) {
 }
 
 const client = new WebClient(token);
+const TEST_USER_ID = "U0AG1SC2J84";
 
 async function main(): Promise<void> {
-  const data = await getHomeData(client);
+  const testUserId = "U0AG1SC2J84";
+  const data = await getHomeData(client, TEST_USER_ID);
 
   console.log("");
   console.log("TH_PYS · Home Data Test");
@@ -28,16 +30,25 @@ async function main(): Promise<void> {
   for (const proceso of data.procesosActivos) {
     console.log({
       procesoId: proceso.procesoId,
-
       empleadoId: proceso.empleadoId,
-
       estado: proceso.estado,
-
       avance: proceso.porcentajeAvance,
-
       fechaLimite: proceso.fechaLimite,
-
       semaforo: proceso.semaforo,
+    });
+  }
+
+  console.log("");
+  console.log("Mis tareas:");
+
+  for (const tarea of data.misTareas) {
+    console.log({
+      taskId: tarea.taskId,
+      procesoId: tarea.procesoId,
+      tarea: tarea.tarea,
+      empleadoId: tarea.empleadoId,
+      estado: tarea.estado,
+      fechaLimite: tarea.fechaLimite,
     });
   }
 }

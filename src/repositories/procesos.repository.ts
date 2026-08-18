@@ -11,6 +11,7 @@ import {
   selectCell,
   textCell,
   userCell,
+  updateListItem,
 } from "../services/slack-list-write.service.js";
 import { getSelectOptionId } from "../services/slack-list-schema.service.js";
 
@@ -58,4 +59,14 @@ export async function createProceso(
   }
 
   return createListItem(client, slackLists.procesos.id, fields);
+}
+
+export async function updateProcesoAvance(
+  client: WebClient,
+  slackItemId: string,
+  porcentajeAvance: number,
+): Promise<void> {
+  await updateListItem(client, slackLists.procesos.id, slackItemId, [
+    numberCell(slackColumns.procesos.porcentajeAvance, porcentajeAvance),
+  ]);
 }

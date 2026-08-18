@@ -3,6 +3,7 @@ import type { WebClient } from "@slack/web-api";
 import { slackColumns } from "../config/slack/columns.js";
 import { slackLists } from "../config/slack/lists.js";
 import { getSelectOptionMap } from "../services/slack-list-schema.service.js";
+import { getAllListItems } from "../services/slack-list-read.service.js";
 import type { AreaProcesoDetail } from "../types/process-detail.js";
 import {
   getNumberField,
@@ -16,18 +17,7 @@ export async function getAreasProceso(
   client: WebClient,
   procesoId: string,
 ): Promise<AreaProcesoDetail[]> {
-  const response = await client.apiCall("slackLists.items.list", {
-    list_id: slackLists.areasProceso.id,
-    limit: 100,
-  });
-
-  const items =
-    (
-      response as {
-        items?: SlackListItem[];
-      }
-    ).items ?? [];
-
+  const items = await getAllListItems(client, slackLists.areasProceso.id);
   const estadoMap = await getSelectOptionMap(
     client,
     slackLists.areasProceso.id,

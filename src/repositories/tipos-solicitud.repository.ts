@@ -4,6 +4,7 @@ import { slackColumns } from "../config/slack/columns.js";
 import { slackLists } from "../config/slack/lists.js";
 import type { TipoSolicitud } from "../types/master-data.js";
 import type { SlackListItem } from "./list-helpers.js";
+import { getAllListItems } from "../services/slack-list-read.service.js";
 
 import {
   getCheckboxField,
@@ -14,18 +15,7 @@ import {
 export async function getTiposSolicitud(
   client: WebClient,
 ): Promise<TipoSolicitud[]> {
-  const response = await client.apiCall("slackLists.items.list", {
-    list_id: slackLists.tiposSolicitud.id,
-    limit: 100,
-  });
-
-  const items =
-    (
-      response as {
-        items?: SlackListItem[];
-      }
-    ).items ?? [];
-
+  const items = await getAllListItems(client, slackLists.tiposSolicitud.id);
   return items
     .map((item): TipoSolicitud | null => {
       const id = getTextField(

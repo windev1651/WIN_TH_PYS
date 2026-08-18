@@ -2,6 +2,8 @@ import type { WebClient } from "@slack/web-api";
 
 import { getProcesos } from "../repositories/procesos-read.repository.js";
 import type { ProcesoListItem } from "../types/process-read.js";
+import { getTareasUsuario } from "../repositories/tareas-proceso-read.repository.js";
+import { getMaxTareasVista } from "./runtime-config.service.js";
 
 export type HomeProcessStatus = "normal" | "warning" | "overdue";
 
@@ -34,9 +36,12 @@ function classifyProcess(
   return "normal";
 }
 
-export async function getHomeData(client: WebClient) {
-  const procesos = await getProcesos(client);
-
+export async function getHomeData(client: WebClient, userId: string) {
+  const [procesos, tareasUsuario, maxTareasVista] = await Promise.all([
+    getProcesos(client),
+    getTareasUsuario(client, userId),
+    getMaxTareasVista(client),
+  ]);
   const today = new Date().toISOString().slice(0, 10);
 
   const activos = procesos
@@ -46,9 +51,36 @@ export async function getHomeData(client: WebClient) {
       semaforo: classifyProcess(proceso, today),
     }));
 
+  const misTareas = tareasUsuario
+    .map((tarea) => {
+      const proceso = procesos.find(
+        (item) => item.procesoId === tarea.procesoId,
+      );
+
+      if (!proceso) {
+        return null;
+      }
+
+      return {
+        ...tarea,
+        empleadoId: proceso.empleadoId,
+        estadoProceso: proceso.estado,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  // console.log("DEBUG home misTareas", {
+  //   userId,
+  //   tareasUsuario: tareasUsuario.length,
+  //   misTareas: misTareas.length,
+  // });
+
   return {
     procesosActivos: activos,
-
+    misTareas,
+    configuracion: {
+      maxTareasVista,
+    },
     resumen: {
       activos: activos.length,
 
@@ -57,6 +89,7 @@ export async function getHomeData(client: WebClient) {
 
       vencenHoy: activos.filter((proceso) => proceso.semaforo === "warning")
         .length,
+      misTareas: misTareas.length,
     },
   };
 }

@@ -13,22 +13,12 @@ import {
 } from "./list-helpers.js";
 import { getSelectOptionMap } from "../services/slack-list-schema.service.js";
 import type { ProcesoListItem } from "../types/process-read.js";
+import { getAllListItems } from "../services/slack-list-read.service.js";
 
 export async function getProcesos(
   client: WebClient,
 ): Promise<ProcesoListItem[]> {
-  const response = await client.apiCall("slackLists.items.list", {
-    list_id: slackLists.procesos.id,
-    limit: 100,
-  });
-
-  const items =
-    (
-      response as {
-        items?: SlackListItem[];
-      }
-    ).items ?? [];
-
+  const items = await getAllListItems(client, slackLists.procesos.id);
   const [tipoSolicitudMap, estadoMap] = await Promise.all([
     getSelectOptionMap(
       client,

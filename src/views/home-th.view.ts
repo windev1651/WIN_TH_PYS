@@ -24,6 +24,16 @@ function getSemaphoreEmoji(semaforo: HomeProcessItem["semaforo"]): string {
 export function buildThHomeBlocks(
   summary: HomeSummary,
   procesos: HomeProcessItem[],
+  misTareas: Array<{
+    taskId: string;
+    procesoId: string;
+    tarea: string;
+    empleadoId: string;
+    estado: string;
+    fechaLimite: string;
+    requiereEvidencia: boolean;
+  }>,
+  maxTareas: number,
 ): KnownBlock[] {
   const blocks: KnownBlock[] = [
     {
@@ -119,6 +129,52 @@ export function buildThHomeBlocks(
         type: "divider",
       },
     );
+  }
+
+  if (misTareas.length > 0) {
+    const visibleTaskCount = Math.min(misTareas.length, maxTareas);
+
+    const taskSummary =
+      misTareas.length > maxTareas
+        ? `*Mis tareas pendientes: ${misTareas.length}* _(sólo se muestran ${visibleTaskCount})_`
+        : `*Mis tareas pendientes: ${misTareas.length}*`;
+    blocks.push(
+      {
+        type: "divider",
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: taskSummary,
+        },
+        accessory: {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "Gestionar tareas",
+          },
+          style: "primary",
+          action_id: "pys_manage_tasks",
+        },
+      },
+    );
+
+    for (const tarea of misTareas.slice(0, maxTareas)) {
+      const evidence = tarea.requiereEvidencia ? " · 📎 Evidencia" : "";
+
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            `*Proceso:* ${tarea.procesoId} / <@${tarea.empleadoId}>\n` +
+            `*Tarea:* ${tarea.tarea}\n` +
+            `*Estado:* ${tarea.estado}${evidence}\n` +
+            `*Vence:* ${tarea.fechaLimite}`,
+        },
+      });
+    }
   }
 
   return blocks;

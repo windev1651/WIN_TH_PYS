@@ -52,19 +52,14 @@ export async function buildProcessSnapshot(
     masterData.parametros,
     "DiasHabilesProceso",
   );
-
   const fechaInicio = new Date(`${input.fechaInicio}T00:00:00Z`);
-
   const fechaLimite = formatDate(
     addBusinessDays(fechaInicio, diasHabiles, festivos),
   );
 
   const newProcessId = processId();
-
   const areaIds = [...new Set(configTareas.map((tarea) => tarea.areaId))];
-
   const areas: AreaProcesoSnapshot[] = [];
-
   const areaProcessIdMap = new Map<string, string>();
 
   for (const areaId of areaIds) {
@@ -75,11 +70,8 @@ export async function buildProcessSnapshot(
     }
 
     const newAreaProcessId = areaProcessId();
-
     areaProcessIdMap.set(areaId, newAreaProcessId);
-
     const tareasArea = configTareas.filter((tarea) => tarea.areaId === areaId);
-
     const ordenArea = Math.min(...tareasArea.map((tarea) => tarea.ordenArea));
 
     areas.push({

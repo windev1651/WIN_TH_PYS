@@ -74,9 +74,8 @@ async function main(): Promise<void> {
   console.log(`Parámetros encontrados: ${parametros.length}`);
 
   const diasHabiles = getNumberParametro(parametros, "DiasHabilesProceso");
-
   const maxEvidencia = getNumberParametro(parametros, "MaxTamanoEvidenciaMB");
-
+  const maxTareasVista = getNumberParametro(parametros, "maxTareasVista");
   const mesesArchivo = getNumberParametro(
     parametros,
     "MesesParaArchivarProceso",
@@ -89,6 +88,7 @@ async function main(): Promise<void> {
     diasHabiles,
     maxEvidencia,
     mesesArchivo,
+    maxTareasVista,
   });
 
   const festivos = await getFestivos(client);

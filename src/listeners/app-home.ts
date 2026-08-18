@@ -3,6 +3,7 @@ import type { App } from "@slack/bolt";
 import { getHomeData } from "../services/home-data.service.js";
 import { buildThHomeBlocks } from "../views/home-th.view.js";
 import { correlationId, logger } from "../utils/logger.js";
+import { publishHome } from "../services/home-publish.service.js";
 
 export function registerAppHomeListeners(app: App): void {
   app.event("app_home_opened", async ({ event, client }) => {
@@ -18,23 +19,12 @@ export function registerAppHomeListeners(app: App): void {
     );
 
     try {
-      const data = await getHomeData(client);
-
-      const blocks = buildThHomeBlocks(data.resumen, data.procesosActivos);
-
-      await client.views.publish({
-        user_id: event.user,
-        view: {
-          type: "home",
-          blocks,
-        },
-      });
+      await publishHome(client, event.user);
 
       logger.info(
         {
           cid,
           userId: event.user,
-          procesos: data.procesosActivos.length,
           action: "app_home_published",
         },
         "App Home publicado correctamente",

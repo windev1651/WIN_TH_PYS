@@ -9,6 +9,7 @@ import {
   selectCell,
   textCell,
   userCell,
+  updateListItem,
 } from "../services/slack-list-write.service.js";
 import { getSelectOptionId } from "../services/slack-list-schema.service.js";
 
@@ -37,5 +38,22 @@ export async function createAreaProceso(
     ),
     selectCell(slackColumns.areasProceso.estado, estadoOption),
     numberCell(slackColumns.areasProceso.ordenArea, area.ordenArea),
+  ]);
+}
+
+export async function updateAreaEstado(
+  client: WebClient,
+  slackItemId: string,
+  estado: string,
+): Promise<void> {
+  const estadoOption = await getSelectOptionId(
+    client,
+    slackLists.areasProceso.id,
+    slackColumns.areasProceso.estado,
+    estado,
+  );
+
+  await updateListItem(client, slackLists.areasProceso.id, slackItemId, [
+    selectCell(slackColumns.areasProceso.estado, estadoOption),
   ]);
 }

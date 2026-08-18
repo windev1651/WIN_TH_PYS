@@ -13,6 +13,7 @@ import {
   userCell,
 } from "../services/slack-list-write.service.js";
 import { getSelectOptionId } from "../services/slack-list-schema.service.js";
+import { updateListItem } from "../services/slack-list-write.service.js";
 
 export async function createTareaProceso(
   client: WebClient,
@@ -55,4 +56,47 @@ export async function createTareaProceso(
   }
 
   return createListItem(client, slackLists.tareasProceso.id, fields);
+}
+
+export async function updateTareaEstado(
+  client: WebClient,
+  slackItemId: string,
+  estado: string,
+  usuarioId: string,
+  comentario?: string,
+): Promise<void> {
+  const estadoOption = await getSelectOptionId(
+    client,
+    slackLists.tareasProceso.id,
+    slackColumns.tareasProceso.estado,
+    estado,
+  );
+
+  const fields = [selectCell(slackColumns.tareasProceso.estado, estadoOption)];
+
+  if (comentario !== undefined && comentario.trim() !== "") {
+    fields.push(textCell(slackColumns.tareasProceso.comentario, comentario));
+  }
+
+  if (estado === "Completada") {
+    const fechaCompletado = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Bogota",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    fields.push(
+      dateCell(slackColumns.tareasProceso.fechaCompletado, fechaCompletado),
+    );
+
+    fields.push(userCell(slackColumns.tareasProceso.completadoPor, usuarioId));
+  }
+
+  await updateListItem(
+    client,
+    slackLists.tareasProceso.id,
+    slackItemId,
+    fields,
+  );
 }

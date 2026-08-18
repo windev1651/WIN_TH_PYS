@@ -8,6 +8,12 @@ type SlackListItemField = NonNullable<
   CreateListItemArgs["initial_fields"]
 >[number];
 
+type UpdateListItemArgs = Parameters<
+  WebClient["slackLists"]["items"]["update"]
+>[0];
+
+type SlackListItemCellUpdate = UpdateListItemArgs["cells"][number];
+
 export function textCell(columnId: string, text: string): SlackListItemField {
   return {
     column_id: columnId,
@@ -101,5 +107,22 @@ export async function deleteListItem(
   await client.slackLists.items.delete({
     list_id: listId,
     id: itemId,
+  });
+}
+
+export async function updateListItem(
+  client: WebClient,
+  listId: string,
+  rowId: string,
+  fields: SlackListItemField[],
+): Promise<void> {
+  const cells: SlackListItemCellUpdate[] = fields.map((field) => ({
+    ...field,
+    row_id: rowId,
+  }));
+
+  await client.slackLists.items.update({
+    list_id: listId,
+    cells,
   });
 }

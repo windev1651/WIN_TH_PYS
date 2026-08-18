@@ -10,20 +10,10 @@ import {
   getUserField,
   type SlackListItem,
 } from "./list-helpers.js";
+import { getAllListItems } from "../services/slack-list-read.service.js";
 
 export async function getAreas(client: WebClient): Promise<Area[]> {
-  const response = await client.apiCall("slackLists.items.list", {
-    list_id: slackLists.areas.id,
-    limit: 100,
-  });
-
-  const items =
-    (
-      response as {
-        items?: SlackListItem[];
-      }
-    ).items ?? [];
-
+  const items = await getAllListItems(client, slackLists.areas.id);
   return items
     .map((item): Area | null => {
       const id = getTextField(item, slackColumns.areas.areaId);

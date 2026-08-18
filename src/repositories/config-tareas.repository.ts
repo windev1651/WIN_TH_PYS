@@ -12,22 +12,12 @@ import {
   type SlackListItem,
 } from "./list-helpers.js";
 import { getSelectOptionMap } from "../services/slack-list-schema.service.js";
+import { getAllListItems } from "../services/slack-list-read.service.js";
 
 export async function getConfigTareas(
   client: WebClient,
 ): Promise<ConfigTarea[]> {
-  const response = await client.apiCall("slackLists.items.list", {
-    list_id: slackLists.configTareas.id,
-    limit: 100,
-  });
-
-  const items =
-    (
-      response as {
-        items?: SlackListItem[];
-      }
-    ).items ?? [];
-
+  const items = await getAllListItems(client, slackLists.configTareas.id);
   const areaOptionMap = await getSelectOptionMap(
     client,
     slackLists.configTareas.id,
