@@ -1,14 +1,57 @@
 import type { WebClient } from "@slack/web-api";
 
-import { getProcesos } from "../repositories/procesos-read.repository.js";
 import type { ProcesoListItem } from "../types/process-read.js";
-import { getTareasUsuario } from "../repositories/tareas-proceso-read.repository.js";
+import { getAllAreasProceso } from "../repositories/areas-proceso-read.repository.js";
+import { getProcesos } from "../repositories/procesos-read.repository.js";
+import { getAllTareasProceso } from "../repositories/tareas-proceso-read.repository.js";
 import { getMaxTareasVista } from "./runtime-config.service.js";
 
 export type HomeProcessStatus = "normal" | "warning" | "overdue";
 
 export type HomeProcessItem = ProcesoListItem & {
   semaforo: HomeProcessStatus;
+};
+
+export type HomeTaskItem = {
+  taskId: string;
+  procesoId: string;
+  tarea: string;
+  empleadoId: string;
+  estado: string;
+  fechaLimite: string;
+  requiereEvidencia: boolean;
+};
+
+export type HomeTaskGroup = {
+  procesoId: string;
+  empleadoId: string;
+  fechaLimite: string;
+  tareasPendientes: number;
+  tareas: HomeTaskItem[];
+};
+
+export type HomeAreaItem = {
+  slackItemId: string;
+  areaProcesoId: string;
+  procesoId: string;
+  areaId: string;
+  areaNombre: string;
+  responsableFuncionalId: string;
+  estado: string;
+  ordenArea: number;
+
+  fechaAprobacion: string | null;
+  aprobadoPorId: string | null;
+  comentario: string | null;
+
+  empleadoId: string;
+  fechaLimite: string;
+
+  tareasTotal: number;
+  tareasObligatorias: number;
+  tareasCompletadas: number;
+
+  avance: number;
 };
 
 function isClosed(estado: string): boolean {
@@ -37,23 +80,69 @@ function classifyProcess(
 }
 
 export async function getHomeData(client: WebClient, userId: string) {
-  const [procesos, tareasUsuario, maxTareasVista] = await Promise.all([
-    getProcesos(client),
-    getTareasUsuario(client, userId),
-    getMaxTareasVista(client),
-  ]);
+  const [procesos, todasLasAreas, todasLasTareas, maxTareasVista] =
+    await Promise.all([
+      getProcesos(client),
+      getAllAreasProceso(client),
+      getAllTareasProceso(client),
+      getMaxTareasVista(client),
+    ]);
   const today = new Date().toISOString().slice(0, 10);
 
-  const activos = procesos
-    .filter((proceso) => !isClosed(proceso.estado))
-    .map((proceso) => ({
-      ...proceso,
-      semaforo: classifyProcess(proceso, today),
-    }));
+  const procesosActivosBase = procesos.filter(
+    (proceso) => !isClosed(proceso.estado),
+  );
+
+  const procesosActivosIds = new Set(
+    procesosActivosBase.map((proceso) => proceso.procesoId),
+  );
+
+  const areasActivas = todasLasAreas.filter((area) =>
+    procesosActivosIds.has(area.procesoId),
+  );
+
+  const tareasActivas = todasLasTareas.filter((tarea) =>
+    procesosActivosIds.has(tarea.procesoId),
+  );
+
+  const tareasUsuario = tareasActivas
+    .filter(
+      (tarea) =>
+        tarea.responsableOperativoId === userId &&
+        !["Completada", "No aplica"].includes(tarea.estado),
+    )
+    .sort((a, b) => {
+      if (a.fechaLimite !== b.fechaLimite) {
+        return a.fechaLimite.localeCompare(b.fechaLimite);
+      }
+
+      const byProcess = a.procesoId.localeCompare(b.procesoId);
+
+      if (byProcess !== 0) {
+        return byProcess;
+      }
+
+      return a.ordenTarea - b.ordenTarea;
+    });
+
+  const areasUsuario = areasActivas
+    .filter(
+      (area) =>
+        area.responsableFuncionalId === userId && area.estado !== "Completada",
+    )
+    .sort((a, b) => {
+      const byProcess = a.procesoId.localeCompare(b.procesoId);
+
+      if (byProcess !== 0) {
+        return byProcess;
+      }
+
+      return a.ordenArea - b.ordenArea;
+    });
 
   const misTareas = tareasUsuario
     .map((tarea) => {
-      const proceso = procesos.find(
+      const proceso = procesosActivosBase.find(
         (item) => item.procesoId === tarea.procesoId,
       );
 
@@ -62,25 +151,118 @@ export async function getHomeData(client: WebClient, userId: string) {
       }
 
       return {
-        ...tarea,
+        taskId: tarea.taskId,
+        procesoId: tarea.procesoId,
+        tarea: tarea.tarea,
         empleadoId: proceso.empleadoId,
-        estadoProceso: proceso.estado,
+        estado: tarea.estado,
+        fechaLimite: tarea.fechaLimite,
+        requiereEvidencia: tarea.requiereEvidencia,
       };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
-  // console.log("DEBUG home misTareas", {
-  //   userId,
-  //   tareasUsuario: tareasUsuario.length,
-  //   misTareas: misTareas.length,
-  // });
+  const misTareasPorProceso = Array.from(
+    misTareas
+      .reduce((grupos, tarea) => {
+        const existente = grupos.get(tarea.procesoId);
+
+        if (existente) {
+          existente.tareas.push(tarea);
+
+          existente.tareasPendientes = existente.tareas.length;
+
+          return grupos;
+        }
+
+        grupos.set(tarea.procesoId, {
+          procesoId: tarea.procesoId,
+
+          empleadoId: tarea.empleadoId,
+
+          fechaLimite: tarea.fechaLimite,
+
+          tareasPendientes: 1,
+
+          tareas: [tarea],
+        });
+
+        return grupos;
+      }, new Map<string, HomeTaskGroup>())
+      .values(),
+  ).sort((a, b) => {
+    const byDate = a.fechaLimite.localeCompare(b.fechaLimite);
+
+    if (byDate !== 0) {
+      return byDate;
+    }
+
+    return a.procesoId.localeCompare(b.procesoId);
+  });
+
+  const misAreas = areasUsuario
+    .map((area) => {
+      const proceso = procesosActivosBase.find(
+        (item) => item.procesoId === area.procesoId,
+      );
+
+      if (!proceso) {
+        return null;
+      }
+
+      const tareasArea = tareasActivas.filter(
+        (tarea) => tarea.areaProcesoId === area.areaProcesoId,
+      );
+
+      const obligatorias = tareasArea.filter(
+        (tarea) => tarea.obligatoria && tarea.estado !== "No aplica",
+      );
+
+      const completadas = obligatorias.filter(
+        (tarea) => tarea.estado === "Completada",
+      ).length;
+
+      const avance =
+        obligatorias.length === 0
+          ? 0
+          : Math.round((completadas / obligatorias.length) * 100);
+
+      return {
+        ...area,
+
+        empleadoId: proceso.empleadoId,
+
+        fechaLimite: proceso.fechaLimite,
+
+        tareasTotal: tareasArea.length,
+
+        tareasObligatorias: obligatorias.length,
+
+        tareasCompletadas: completadas,
+
+        avance,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  const activos = procesosActivosBase.map((proceso) => ({
+    ...proceso,
+
+    semaforo: classifyProcess(proceso, today),
+  }));
 
   return {
     procesosActivos: activos,
+
     misTareas,
+    misTareasPorProceso,
+
+    misAreas,
+
     configuracion: {
       maxTareasVista,
     },
+
     resumen: {
       activos: activos.length,
 
@@ -89,7 +271,10 @@ export async function getHomeData(client: WebClient, userId: string) {
 
       vencenHoy: activos.filter((proceso) => proceso.semaforo === "warning")
         .length,
+
       misTareas: misTareas.length,
+
+      misAreas: misAreas.length,
     },
   };
 }

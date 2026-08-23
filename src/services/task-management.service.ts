@@ -8,6 +8,10 @@ import { updateProcesoAvance } from "../repositories/procesos.repository.js";
 import { getTareasProceso } from "../repositories/tareas-proceso-read.repository.js";
 import { updateTareaEstado } from "../repositories/tareas-proceso.repository.js";
 import { eventId } from "../utils/entity-id.js";
+import {
+  approveArea,
+  shouldAutoApproveArea,
+} from "./area-management.service.js";
 
 type CompleteTaskInput = {
   procesoId: string;
@@ -17,10 +21,24 @@ type CompleteTaskInput = {
   cid: string;
 };
 
+export type CompleteTaskResult = {
+  procesoId: string;
+
+  taskId: string;
+  tarea: string;
+
+  comentario: string | null;
+
+  autoAprobacion: boolean;
+
+  areaProcesoId: string;
+  areaNombre: string;
+};
+
 export async function completeTask(
   client: WebClient,
   input: CompleteTaskInput,
-): Promise<void> {
+): Promise<CompleteTaskResult> {
   const [procesos, areas, tareas] = await Promise.all([
     getProcesos(client),
     getAreasProceso(client, input.procesoId),
@@ -44,9 +62,16 @@ export async function completeTask(
   }
 
   if (tarea.estado === "Completada") {
-    return;
+    return {
+      procesoId: input.procesoId,
+      taskId: tarea.taskId,
+      tarea: tarea.tarea,
+      comentario: tarea.comentario,
+      autoAprobacion: false,
+      areaProcesoId: tarea.areaProcesoId,
+      areaNombre: "",
+    };
   }
-
   if (tarea.requiereEvidencia) {
     throw new Error("La tarea requiere evidencia antes de completarse");
   }
@@ -58,6 +83,22 @@ export async function completeTask(
     input.usuarioId,
     input.comentario,
   );
+
+  await createAuditEvent(client, {
+    eventId: eventId(),
+    correlationId: input.cid,
+    procesoId: input.procesoId,
+    entidadTipo: "Tarea",
+    entidadId: tarea.taskId,
+    accion: "COMPLETAR_TAREA",
+    usuarioId: input.usuarioId,
+    fechaHoraUtc: new Date().toISOString(),
+    estadoAnterior: tarea.estado,
+    estadoNuevo: "Completada",
+    detalle: input.comentario?.trim()
+      ? input.comentario.trim()
+      : "Tarea completada",
+  });
 
   const tareasActualizadas = tareas.map((item) =>
     item.taskId === tarea.taskId
@@ -84,8 +125,38 @@ export async function completeTask(
       (item) => item.estado === "Completada" || item.estado === "No aplica",
     );
 
-  if (obligatoriasCompletas && area.estado !== "Lista para aprobación") {
-    await updateAreaEstado(client, area.slackItemId, "Lista para aprobación");
+  const autoAprobacion =
+    obligatoriasCompletas && shouldAutoApproveArea(area, tareasArea);
+
+  if (obligatoriasCompletas) {
+    if (autoAprobacion) {
+      /*
+       * approveArea vuelve a consultar
+       * las tareas desde Slack.
+       *
+       * Primero dejamos el área en
+       * Lista para aprobación para
+       * mantener una transición
+       * consistente.
+       */
+      if (area.estado !== "Lista para aprobación") {
+        await updateAreaEstado(
+          client,
+          area.slackItemId,
+          "Lista para aprobación",
+        );
+      }
+
+      await approveArea(client, {
+        areaProcesoId: area.areaProcesoId,
+        usuarioId: input.usuarioId,
+        comentario: "Aprobación automática",
+        cid: input.cid,
+        origen: "automatica",
+      });
+    } else if (area.estado !== "Lista para aprobación") {
+      await updateAreaEstado(client, area.slackItemId, "Lista para aprobación");
+    }
   } else if (area.estado === "Pendiente") {
     await updateAreaEstado(client, area.slackItemId, "En progreso");
   }
@@ -104,18 +175,13 @@ export async function completeTask(
       : Math.round((completadas / tareasComputables.length) * 100);
 
   await updateProcesoAvance(client, proceso.slackItemId, porcentajeAvance);
-
-  await createAuditEvent(client, {
-    eventId: eventId(),
-    correlationId: input.cid,
+  return {
     procesoId: input.procesoId,
-    entidadTipo: "Tarea",
-    entidadId: tarea.taskId,
-    accion: "COMPLETAR_TAREA",
-    usuarioId: input.usuarioId,
-    fechaHoraUtc: new Date().toISOString(),
-    estadoAnterior: tarea.estado,
-    estadoNuevo: "Completada",
-    detalle: input.comentario?.trim() ? input.comentario : "Tarea completada",
-  });
+    taskId: tarea.taskId,
+    tarea: tarea.tarea,
+    comentario: input.comentario?.trim() ? input.comentario.trim() : null,
+    autoAprobacion,
+    areaProcesoId: area.areaProcesoId,
+    areaNombre: area.areaNombre,
+  };
 }

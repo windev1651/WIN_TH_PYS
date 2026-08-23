@@ -1,11 +1,16 @@
 import type { KnownBlock } from "@slack/types";
-
-import type { HomeProcessItem } from "../services/home-data.service.js";
+import type {
+  HomeAreaItem,
+  HomeProcessItem,
+  HomeTaskGroup,
+} from "../services/home-data.service.js";
 
 type HomeSummary = {
   activos: number;
   vencidos: number;
   vencenHoy: number;
+  misTareas: number;
+  misAreas: number;
 };
 
 function getSemaphoreEmoji(semaforo: HomeProcessItem["semaforo"]): string {
@@ -24,15 +29,8 @@ function getSemaphoreEmoji(semaforo: HomeProcessItem["semaforo"]): string {
 export function buildThHomeBlocks(
   summary: HomeSummary,
   procesos: HomeProcessItem[],
-  misTareas: Array<{
-    taskId: string;
-    procesoId: string;
-    tarea: string;
-    empleadoId: string;
-    estado: string;
-    fechaLimite: string;
-    requiereEvidencia: boolean;
-  }>,
+  misTareasPorProceso: HomeTaskGroup[],
+  misAreas: HomeAreaItem[],
   maxTareas: number,
 ): KnownBlock[] {
   const blocks: KnownBlock[] = [
@@ -131,13 +129,7 @@ export function buildThHomeBlocks(
     );
   }
 
-  if (misTareas.length > 0) {
-    const visibleTaskCount = Math.min(misTareas.length, maxTareas);
-
-    const taskSummary =
-      misTareas.length > maxTareas
-        ? `*Mis tareas pendientes: ${misTareas.length}* _(sólo se muestran ${visibleTaskCount})_`
-        : `*Mis tareas pendientes: ${misTareas.length}*`;
+  if (misAreas.length > 0) {
     blocks.push(
       {
         type: "divider",
@@ -146,32 +138,78 @@ export function buildThHomeBlocks(
         type: "section",
         text: {
           type: "mrkdwn",
-          text: taskSummary,
-        },
-        accessory: {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "Gestionar tareas",
-          },
-          style: "primary",
-          action_id: "pys_manage_tasks",
+          text: `*Mis áreas pendientes: ${misAreas.length}*`,
         },
       },
     );
 
-    for (const tarea of misTareas.slice(0, maxTareas)) {
-      const evidence = tarea.requiereEvidencia ? " · 📎 Evidencia" : "";
-
+    for (const area of misAreas) {
       blocks.push({
         type: "section",
+
         text: {
           type: "mrkdwn",
           text:
-            `*Proceso:* ${tarea.procesoId} / <@${tarea.empleadoId}>\n` +
-            `*Tarea:* ${tarea.tarea}\n` +
-            `*Estado:* ${tarea.estado}${evidence}\n` +
-            `*Vence:* ${tarea.fechaLimite}`,
+            `*Proceso:* ${area.procesoId} / <@${area.empleadoId}>\n` +
+            `*Área:* ${area.areaNombre}\n` +
+            `*Estado:* ${area.estado}\n` +
+            `*Avance:* ${area.tareasCompletadas}/${area.tareasObligatorias} obligatorias (${area.avance}%)`,
+        },
+
+        accessory: {
+          type: "button",
+
+          text: {
+            type: "plain_text",
+            text: "Gestionar área",
+          },
+
+          action_id: "pys_manage_area",
+
+          value: area.areaProcesoId,
+        },
+      });
+    }
+  }
+
+  if (summary.misTareas > 0) {
+    blocks.push(
+      {
+        type: "divider",
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `*Mis tareas pendientes: ${summary.misTareas}*`,
+        },
+      },
+    );
+
+    for (const grupo of misTareasPorProceso) {
+      blocks.push({
+        type: "section",
+
+        text: {
+          type: "mrkdwn",
+          text:
+            `*Proceso:* ${grupo.procesoId} / <@${grupo.empleadoId}>\n` +
+            `*Tareas pendientes:* ${grupo.tareasPendientes}\n` +
+            `*Vence:* ${grupo.fechaLimite}`,
+        },
+
+        accessory: {
+          type: "button",
+
+          text: {
+            type: "plain_text",
+            text: "Gestionar tareas",
+          },
+
+          action_id: "pys_manage_tasks",
+
+          // ESTE es el cambio importante:
+          value: grupo.procesoId,
         },
       });
     }

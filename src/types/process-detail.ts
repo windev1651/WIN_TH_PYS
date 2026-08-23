@@ -7,6 +7,10 @@ export type AreaProcesoDetail = {
   responsableFuncionalId: string;
   estado: string;
   ordenArea: number;
+
+  fechaAprobacion: string | null;
+  aprobadoPorId: string | null;
+  comentario: string | null;
 };
 
 export type TareaProcesoDetail = {

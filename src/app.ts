@@ -4,6 +4,7 @@ import { registerAppHomeListeners } from "./listeners/app-home.js";
 import { registerProcessCreateListeners } from "./listeners/process-create.js";
 import { registerProcessDetailListeners } from "./listeners/process-detail.js";
 import { registerManageTasksListeners } from "./listeners/manage-tasks.js";
+import { registerManageAreaListeners } from "./listeners/manage-area.js";
 
 import { logger } from "./utils/logger.js";
 import { validateSlackConfiguration } from "./config/slack/validate.js";
@@ -33,8 +34,8 @@ const app = new App({
 registerAppHomeListeners(app);
 registerProcessCreateListeners(app);
 registerProcessDetailListeners(app);
-registerAppHomeListeners(app);
 registerManageTasksListeners(app);
+registerManageAreaListeners(app);
 
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, "Apagando TH_PYS");

@@ -2,7 +2,10 @@ import type { App } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
 
 import { getTareasUsuario } from "../repositories/tareas-proceso-read.repository.js";
-import { completeTask } from "../services/task-management.service.js";
+import {
+  completeTask,
+  CompleteTaskResult,
+} from "../services/task-management.service.js";
 import { correlationId, logger } from "../utils/logger.js";
 import { buildManageTasksView } from "../views/manage-tasks.view.js";
 import { publishHome } from "../services/home-publish.service.js";
@@ -10,10 +13,20 @@ import { getProcesos } from "../repositories/procesos-read.repository.js";
 import { getMaxTareasVista } from "../services/runtime-config.service.js";
 
 export function registerManageTasksListeners(app: App): void {
-  app.action("pys_manage_tasks", async ({ ack, body, client }) => {
+  app.action("pys_manage_tasks", async ({ ack, action, body, client }) => {
     await ack();
 
     const cid = correlationId("tasks");
+
+    if (action.type !== "button") {
+      return;
+    }
+
+    const procesoId = action.value;
+
+    if (!procesoId) {
+      return;
+    }
 
     if (!("trigger_id" in body)) {
       logger.error(
@@ -35,7 +48,20 @@ export function registerManageTasksListeners(app: App): void {
         getMaxTareasVista(client),
       ]);
 
-      const tareasConProceso = tareas
+      const tareasProceso = tareas.filter(
+        (tarea) => tarea.procesoId === procesoId,
+      );
+
+      if (tareasProceso.length === 0) {
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: "No tienes tareas pendientes para este proceso.",
+        });
+
+        return;
+      }
+
+      const tareasConProceso = tareasProceso
         .map((tarea) => {
           const proceso = procesos.find(
             (item) => item.procesoId === tarea.procesoId,
@@ -52,54 +78,29 @@ export function registerManageTasksListeners(app: App): void {
           };
         })
         .filter((item): item is NonNullable<typeof item> => item !== null)
-        .sort((a, b) => {
-          /*
-           * Primero el proceso que vence antes.
-           */
-          const byFecha = a.fechaLimiteProceso.localeCompare(
-            b.fechaLimiteProceso,
-          );
+        .sort((a, b) => a.ordenTarea - b.ordenTarea);
 
-          if (byFecha !== 0) {
-            return byFecha;
-          }
+      // if (tareas.length === 0) {
+      //   await client.chat.postMessage({
+      //     channel: body.user.id,
+      //     text: "No tienes tareas pendientes para gestionar.",
+      //   });
 
-          /*
-           * Después agrupamos por ProcesoID.
-           */
-          const byProceso = a.procesoId.localeCompare(b.procesoId);
-
-          if (byProceso !== 0) {
-            return byProceso;
-          }
-
-          /*
-           * Finalmente respetamos el orden
-           * de las tareas dentro del proceso.
-           */
-          return a.ordenTarea - b.ordenTarea;
-        });
-
-      if (tareas.length === 0) {
-        await client.chat.postMessage({
-          channel: body.user.id,
-          text: "No tienes tareas pendientes para gestionar.",
-        });
-
-        return;
-      }
+      //   return;
+      // }
 
       await client.views.open({
         trigger_id: body.trigger_id,
 
-        view: buildManageTasksView(tareasConProceso, cid, maxTareasVista),
+        view: buildManageTasksView(tareasConProceso, cid, maxTareasVista, 0),
       });
 
       logger.info(
         {
           cid,
           userId: body.user.id,
-          tareas: Math.min(tareas.length, 6),
+          tareas: Math.min(tareasConProceso.length, maxTareasVista),
+          procesoId,
           action: "manage_tasks_opened",
         },
         "Modal de gestión de tareas abierto",
@@ -120,10 +121,20 @@ export function registerManageTasksListeners(app: App): void {
   app.view("pys_manage_tasks_submit", async ({ ack, body, view, client }) => {
     const metadata = JSON.parse(view.private_metadata || "{}") as {
       cid?: string;
+      procesoId?: string;
+      page?: number;
     };
 
     const cid = metadata.cid ?? correlationId("tasks");
 
+    const procesoId = metadata.procesoId;
+
+    const page = metadata.page ?? 0;
+
+    if (!procesoId) {
+      await ack();
+      return;
+    }
     /*
      * ACK primero.
      * Las escrituras en Slack pueden tardar,
@@ -143,9 +154,16 @@ export function registerManageTasksListeners(app: App): void {
       const maxTareasVista = await getMaxTareasVista(client);
       const tareas = await getTareasUsuario(client, body.user.id);
 
-      const tareasVisibles = tareas.slice(0, maxTareasVista);
+      const tareasProceso = tareas.filter(
+        (tarea) => tarea.procesoId === procesoId,
+      );
+
+      const start = page * maxTareasVista;
+
+      const tareasVisibles = tareasProceso.slice(start, start + maxTareasVista);
 
       let completadas = 0;
+      const resultados: CompleteTaskResult[] = [];
 
       for (const tarea of tareasVisibles) {
         const completeBlock = view.state.values[`complete_${tarea.taskId}`];
@@ -161,7 +179,7 @@ export function registerManageTasksListeners(app: App): void {
           continue;
         }
 
-        await completeTask(client, {
+        const resultado = await completeTask(client, {
           procesoId: tarea.procesoId,
           taskId: tarea.taskId,
           usuarioId: body.user.id,
@@ -169,6 +187,7 @@ export function registerManageTasksListeners(app: App): void {
           cid,
         });
 
+        resultados.push(resultado);
         completadas += 1;
       }
 
@@ -183,14 +202,58 @@ export function registerManageTasksListeners(app: App): void {
       );
 
       if (completadas > 0) {
+        const detalleTareas = resultados
+          .map((resultado) => {
+            const comentario = resultado.comentario
+              ? `\nComentario: ${resultado.comentario}`
+              : "";
+
+            return (
+              `• *Tarea:* ${resultado.tarea}\n` +
+              `  Proceso: ${resultado.procesoId}` +
+              comentario
+            );
+          })
+          .join("\n\n");
+
         await client.chat.postMessage({
           channel: body.user.id,
 
           text:
-            completadas === 1
-              ? "Se completó 1 tarea correctamente."
-              : `Se completaron ${completadas} tareas correctamente.`,
+            resultados.length === 1
+              ? `Se completó 1 tarea correctamente.\n\n${detalleTareas}`
+              : `Se completaron ${resultados.length} tareas correctamente.\n\n${detalleTareas}`,
         });
+
+        const areasAutoAprobadas = resultados.filter(
+          (resultado) => resultado.autoAprobacion,
+        );
+        if (areasAutoAprobadas.length > 0) {
+          const areasUnicas = Array.from(
+            new Map(
+              areasAutoAprobadas.map((resultado) => [
+                resultado.areaProcesoId,
+                resultado,
+              ]),
+            ).values(),
+          );
+
+          const detalleAreas = areasUnicas
+            .map(
+              (resultado) =>
+                `• *${resultado.areaNombre}* · ${resultado.procesoId}`,
+            )
+            .join("\n");
+
+          await client.chat.postMessage({
+            channel: body.user.id,
+
+            text:
+              "✅ *Área aprobada automáticamente*\n\n" +
+              `${detalleAreas}\n\n` +
+              "La aprobación fue automática porque eres el Responsable Funcional y el único Responsable Operativo del área.",
+          });
+        }
       } else {
         await client.chat.postMessage({
           channel: body.user.id,

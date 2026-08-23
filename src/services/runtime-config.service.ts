@@ -1,9 +1,15 @@
 import type { WebClient } from "@slack/web-api";
 
-import { getMasterData, getNumberParametro } from "./master-data.service.js";
+import { getParametros } from "../repositories/parametros.repository.js";
 
 export async function getMaxTareasVista(client: WebClient): Promise<number> {
-  const masterData = await getMasterData(client);
+  const parametros = await getParametros(client);
 
-  return getNumberParametro(masterData.parametros, "MaxTareasPorVista") ?? 6;
+  const parametro = parametros.find(
+    (item) => item.clave === "MaxTareasPorVista" && item.activo,
+  );
+
+  const value = Number(parametro?.valor);
+
+  return Number.isFinite(value) && value > 0 ? value : 6;
 }

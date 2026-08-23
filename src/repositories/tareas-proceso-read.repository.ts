@@ -178,6 +178,14 @@ export async function getTareasUsuario(
   return tareasUsuario;
 }
 
+export async function getAllTareasProceso(
+  client: WebClient,
+): Promise<TareaProcesoDetail[]> {
+  const items = await getAllListItems(client, slackLists.tareasProceso.id);
+
+  return parseTareas(client, items);
+}
+
 async function parseTareas(
   client: WebClient,
   items: SlackListItem[],

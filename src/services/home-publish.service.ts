@@ -12,7 +12,8 @@ export async function publishHome(
   const blocks = buildThHomeBlocks(
     data.resumen,
     data.procesosActivos,
-    data.misTareas,
+    data.misTareasPorProceso,
+    data.misAreas,
     data.configuracion.maxTareasVista,
   );
 

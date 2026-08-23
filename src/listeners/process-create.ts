@@ -1,9 +1,16 @@
 import type { App } from "@slack/bolt";
+import { WebClient } from "@slack/web-api";
 
 import { getTiposSolicitud } from "../repositories/tipos-solicitud.repository.js";
 import { correlationId, logger } from "../utils/logger.js";
 import { createPazYSalvo } from "../services/process-create.service.js";
+import { getCachedValue } from "../services/reference-data-cache.service.js";
 
+export async function getCachedTiposSolicitud(client: WebClient) {
+  return getCachedValue("tiposSolicitud", 60_000, () =>
+    getTiposSolicitud(client),
+  );
+}
 export function registerProcessCreateListeners(app: App): void {
   app.action("pys_create_process", async ({ ack, body, client }) => {
     await ack();
@@ -31,7 +38,7 @@ export function registerProcessCreateListeners(app: App): void {
       return;
     }
 
-    const tiposSolicitud = await getTiposSolicitud(client);
+    const tiposSolicitud = await getCachedTiposSolicitud(client);
 
     const tiposActivos = tiposSolicitud.filter((tipo) => tipo.activo);
 

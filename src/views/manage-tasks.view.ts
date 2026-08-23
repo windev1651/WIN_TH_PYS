@@ -10,15 +10,28 @@ export function buildManageTasksView(
   tareas: ManageTaskItem[],
   cid: string,
   maxTareasVista: number,
+  page: number,
 ): View {
-  const visibleTasks = tareas.slice(0, maxTareasVista);
+  const totalPages = Math.max(1, Math.ceil(tareas.length / maxTareasVista));
+
+  const safePage = Math.min(Math.max(page, 0), totalPages - 1);
+
+  const start = safePage * maxTareasVista;
+
+  const visibleTasks = tareas.slice(start, start + maxTareasVista);
+
+  const firstTask = visibleTasks[0];
+
+  if (!firstTask) {
+    throw new Error("No hay tareas disponibles para mostrar");
+  }
+
+  const procesoId = firstTask.procesoId;
 
   const visibilityMessage =
     tareas.length > maxTareasVista
-      ? `Tienes ${tareas.length} tareas pendientes. En esta vista se muestran ${visibleTasks.length}.`
-      : `Tienes ${tareas.length} tareas pendientes.`;
-
-  const processIds = [...new Set(visibleTasks.map((tarea) => tarea.procesoId))];
+      ? `Tienes ${tareas.length} tareas pendientes en este proceso. Se muestran ${maxTareasVista}.`
+      : `Tienes ${tareas.length} tareas pendientes en este proceso.`;
 
   const blocks: KnownBlock[] = [
     {
@@ -36,105 +49,99 @@ export function buildManageTasksView(
     },
   ];
 
-  for (const [processIndex, procesoId] of processIds.entries()) {
-    const tareasProceso = visibleTasks.filter(
-      (tarea) => tarea.procesoId === procesoId,
-    );
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `*Proceso: ${procesoId} / <@${firstTask.empleadoId}>*`,
+    },
+  });
 
-    const firstTask = tareasProceso[0];
-
-    if (!firstTask) {
-      continue;
-    }
-
-    if (processIndex > 0) {
-      blocks.push({
-        type: "divider",
-      });
-    }
-
+  for (const tarea of visibleTasks) {
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*Proceso: ${procesoId} / <@${firstTask.empleadoId}>*`,
+        text:
+          `*Tarea:* ${tarea.tarea}\n` +
+          `*Estado:* ${tarea.estado}\n` +
+          `*Vence:* ${tarea.fechaLimite}\n` +
+          `*Evidencia requerida:* ${tarea.requiereEvidencia ? "📎 Sí" : "No"}`,
       },
     });
 
-    for (const tarea of tareasProceso) {
+    if (!tarea.requiereEvidencia) {
       blocks.push({
         type: "section",
+        block_id: `complete_${tarea.taskId}`,
         text: {
           type: "mrkdwn",
-          text:
-            `*Tarea:* ${tarea.tarea}\n` +
-            `*Estado:* ${tarea.estado}\n` +
-            `*Vence:* ${tarea.fechaLimite}\n` +
-            `*Evidencia requerida:* ${
-              tarea.requiereEvidencia ? "📎 Sí" : "No"
-            }`,
+          text: "*Acción*",
         },
-      });
-
-      if (!tarea.requiereEvidencia) {
-        blocks.push({
-          type: "section",
-          block_id: `complete_${tarea.taskId}`,
-          text: {
-            type: "mrkdwn",
-            text: "*Acción*",
-          },
-          accessory: {
-            type: "checkboxes",
-            action_id: "complete",
-            options: [
-              {
-                text: {
-                  type: "plain_text",
-                  text: "Marcar como completada",
-                },
-                value: "complete",
-              },
-            ],
-          },
-        });
-      } else {
-        blocks.push({
-          type: "context",
-          elements: [
+        accessory: {
+          type: "checkboxes",
+          action_id: "complete",
+          options: [
             {
-              type: "mrkdwn",
-              text:
-                "📎 Esta tarea requiere evidencia. " +
-                "La carga de evidencia se habilitará en el siguiente flujo.",
+              text: {
+                type: "plain_text",
+                text: "Marcar como completada",
+              },
+              value: "complete",
             },
           ],
-        });
-      }
-
-      blocks.push({
-        type: "input",
-        block_id: `comment_${tarea.taskId}`,
-        optional: true,
-        label: {
-          type: "plain_text",
-          text: "Comentario",
-        },
-        element: {
-          type: "plain_text_input",
-          action_id: "comment",
-          multiline: true,
-          initial_value:
-            tarea.comentario && tarea.comentario.trim() !== ""
-              ? tarea.comentario
-              : undefined,
         },
       });
-
+    } else {
       blocks.push({
-        type: "divider",
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text:
+              "📎 Esta tarea requiere evidencia. " +
+              "La carga de evidencia se habilitará en el siguiente flujo.",
+          },
+        ],
       });
     }
+
+    blocks.push({
+      type: "input",
+      block_id: `comment_${tarea.taskId}`,
+      optional: true,
+      label: {
+        type: "plain_text",
+        text: "Comentario",
+      },
+      element: {
+        type: "plain_text_input",
+        action_id: "comment",
+        multiline: true,
+        initial_value:
+          tarea.comentario && tarea.comentario.trim() !== ""
+            ? tarea.comentario
+            : undefined,
+      },
+    });
+
+    blocks.push({
+      type: "divider",
+    });
+  }
+
+  if (totalPages > 1) {
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text:
+            `Página *${safePage + 1} de ${totalPages}* · ` +
+            `${tareas.length} tareas pendientes`,
+        },
+      ],
+    });
   }
 
   return {
@@ -144,6 +151,8 @@ export function buildManageTasksView(
 
     private_metadata: JSON.stringify({
       cid,
+      procesoId,
+      page: safePage,
     }),
 
     title: {
