@@ -151,6 +151,21 @@ export function registerManageAreaListeners(app: App): void {
        */
       await publishHome(client, body.user.id);
 
+      let mensaje =
+        "✅ *Área aprobada correctamente*\n\n" +
+        `*Área:* ${result.areaNombre}\n` +
+        `*Proceso:* ${result.procesoId}`;
+
+      if (result.comentario) {
+        mensaje += `\n*Comentario:* ${result.comentario}`;
+      }
+
+      if (result.listoParaCierre) {
+        mensaje +=
+          "\n\n✅ *Todas las áreas del proceso están completas.*\n" +
+          "El Paz y Salvo quedó pendiente de cierre por Talento Humano.";
+      }
+
       logger.info(
         {
           cid,
@@ -165,11 +180,7 @@ export function registerManageAreaListeners(app: App): void {
 
       await client.chat.postMessage({
         channel: body.user.id,
-        text:
-          "✅ *Área aprobada correctamente*\n\n" +
-          `*Área:* ${result.areaNombre}\n` +
-          `*Proceso:* ${result.procesoId}` +
-          (result.comentario ? `\n*Comentario:* ${result.comentario}` : ""),
+        text: mensaje,
       });
     } catch (err) {
       logger.error(

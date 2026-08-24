@@ -4,6 +4,7 @@ import { createAuditEvent } from "../repositories/auditoria.repository.js";
 import { getAllAreasProceso } from "../repositories/areas-proceso-read.repository.js";
 import { approveAreaItem } from "../repositories/areas-proceso.repository.js";
 import { getTareasProceso } from "../repositories/tareas-proceso-read.repository.js";
+import { recalculateProcessState } from "./process-state.service.js";
 import { eventId } from "../utils/entity-id.js";
 import {
   AreaProcesoDetail,
@@ -26,6 +27,7 @@ export async function approveArea(
   areaProcesoId: string;
   areaNombre: string;
   comentario: string | null;
+  listoParaCierre: boolean;
 }> {
   const origen = input.origen ?? "manual";
   const areas = await getAllAreasProceso(client);
@@ -52,6 +54,7 @@ export async function approveArea(
       areaProcesoId: area.areaProcesoId,
       areaNombre: area.areaNombre,
       comentario: area.comentario ?? null,
+      listoParaCierre: false,
     };
   }
 
@@ -111,11 +114,18 @@ export async function approveArea(
           : "Área aprobada por Responsable Funcional",
   });
 
+  const processState = await recalculateProcessState(client, {
+    procesoId: area.procesoId,
+    usuarioId: input.usuarioId,
+    cid: input.cid,
+  });
+
   return {
     procesoId: area.procesoId,
     areaProcesoId: area.areaProcesoId,
     areaNombre: area.areaNombre,
     comentario: input.comentario?.trim() ? input.comentario.trim() : null,
+    listoParaCierre: processState.listoParaCierre,
   };
 }
 

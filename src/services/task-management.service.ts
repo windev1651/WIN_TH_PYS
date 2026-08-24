@@ -30,6 +30,7 @@ export type CompleteTaskResult = {
   comentario: string | null;
 
   autoAprobacion: boolean;
+  listoParaCierre: boolean;
 
   areaProcesoId: string;
   areaNombre: string;
@@ -68,6 +69,7 @@ export async function completeTask(
       tarea: tarea.tarea,
       comentario: tarea.comentario,
       autoAprobacion: false,
+      listoParaCierre: false,
       areaProcesoId: tarea.areaProcesoId,
       areaNombre: "",
     };
@@ -128,6 +130,8 @@ export async function completeTask(
   const autoAprobacion =
     obligatoriasCompletas && shouldAutoApproveArea(area, tareasArea);
 
+  let autoApprovalResult: Awaited<ReturnType<typeof approveArea>> | null = null;
+
   if (obligatoriasCompletas) {
     if (autoAprobacion) {
       /*
@@ -147,7 +151,7 @@ export async function completeTask(
         );
       }
 
-      await approveArea(client, {
+      autoApprovalResult = await approveArea(client, {
         areaProcesoId: area.areaProcesoId,
         usuarioId: input.usuarioId,
         comentario: "Aprobación automática",
@@ -181,6 +185,7 @@ export async function completeTask(
     tarea: tarea.tarea,
     comentario: input.comentario?.trim() ? input.comentario.trim() : null,
     autoAprobacion,
+    listoParaCierre: autoApprovalResult?.listoParaCierre ?? false,
     areaProcesoId: area.areaProcesoId,
     areaNombre: area.areaNombre,
   };

@@ -151,6 +151,13 @@ export const slackColumns = {
     dmChannelId: "Col0BQ7CYFX99",
     dmMessageTs: "Col0BQBLWJ84E",
   },
+
+  usuariosAutorizados: {
+    usuario: "Col0BRPNMFZ7Z",
+    rol: "Col0BRPNMSXJT",
+    activo: "Col0BRPNPDA6B",
+    observacion: "Col0BS53FF8H0",
+  },
 } as const;
 
 export type SlackColumns = typeof slackColumns;

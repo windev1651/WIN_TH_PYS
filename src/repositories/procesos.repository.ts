@@ -70,3 +70,59 @@ export async function updateProcesoAvance(
     numberCell(slackColumns.procesos.porcentajeAvance, porcentajeAvance),
   ]);
 }
+
+export async function updateProcesoEstado(
+  client: WebClient,
+  slackItemId: string,
+  estado: string,
+): Promise<void> {
+  const estadoOption = await getSelectOptionId(
+    client,
+    slackLists.procesos.id,
+    slackColumns.procesos.estado,
+    estado,
+  );
+
+  await updateListItem(client, slackLists.procesos.id, slackItemId, [
+    selectCell(slackColumns.procesos.estado, estadoOption),
+  ]);
+}
+
+export async function closeProcesoItem(
+  client: WebClient,
+  slackItemId: string,
+  userId: string,
+  comentario?: string,
+): Promise<void> {
+  const estadoOption = await getSelectOptionId(
+    client,
+    slackLists.procesos.id,
+    slackColumns.procesos.estado,
+    "Finalizado",
+  );
+
+  const fechaCierre = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Bogota",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+
+  const fields = [
+    selectCell(slackColumns.procesos.estado, estadoOption),
+
+    dateCell(slackColumns.procesos.fechaCierre, fechaCierre),
+
+    userCell(slackColumns.procesos.cerradoPor, userId),
+
+    checkboxCell(slackColumns.procesos.cierreExcepcion, false),
+  ];
+
+  if (comentario !== undefined && comentario.trim() !== "") {
+    fields.push(
+      textCell(slackColumns.procesos.comentarioTh, comentario.trim()),
+    );
+  }
+
+  await updateListItem(client, slackLists.procesos.id, slackItemId, fields);
+}

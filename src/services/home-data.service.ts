@@ -5,6 +5,7 @@ import { getAllAreasProceso } from "../repositories/areas-proceso-read.repositor
 import { getProcesos } from "../repositories/procesos-read.repository.js";
 import { getAllTareasProceso } from "../repositories/tareas-proceso-read.repository.js";
 import { getMaxTareasVista } from "./runtime-config.service.js";
+import { getUserPermissions } from "./authorization.service.js";
 
 export type HomeProcessStatus = "normal" | "warning" | "overdue";
 
@@ -80,12 +81,13 @@ function classifyProcess(
 }
 
 export async function getHomeData(client: WebClient, userId: string) {
-  const [procesos, todasLasAreas, todasLasTareas, maxTareasVista] =
+  const [procesos, todasLasAreas, todasLasTareas, maxTareasVista, permisos] =
     await Promise.all([
       getProcesos(client),
       getAllAreasProceso(client),
       getAllTareasProceso(client),
       getMaxTareasVista(client),
+      getUserPermissions(client, userId),
     ]);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -253,27 +255,21 @@ export async function getHomeData(client: WebClient, userId: string) {
 
   return {
     procesosActivos: activos,
-
     misTareas,
     misTareasPorProceso,
-
     misAreas,
-
+    permisos,
     configuracion: {
       maxTareasVista,
     },
 
     resumen: {
       activos: activos.length,
-
       vencidos: activos.filter((proceso) => proceso.semaforo === "overdue")
         .length,
-
       vencenHoy: activos.filter((proceso) => proceso.semaforo === "warning")
         .length,
-
       misTareas: misTareas.length,
-
       misAreas: misAreas.length,
     },
   };

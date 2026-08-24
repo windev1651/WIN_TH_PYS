@@ -4,6 +4,7 @@ import type {
   HomeProcessItem,
   HomeTaskGroup,
 } from "../services/home-data.service.js";
+import type { UserPermissions } from "../services/authorization.service.js";
 
 type HomeSummary = {
   activos: number;
@@ -26,12 +27,13 @@ function getSemaphoreEmoji(semaforo: HomeProcessItem["semaforo"]): string {
   }
 }
 
-export function buildThHomeBlocks(
+export function buildHomeBlocks(
   summary: HomeSummary,
   procesos: HomeProcessItem[],
   misTareasPorProceso: HomeTaskGroup[],
   misAreas: HomeAreaItem[],
   maxTareas: number,
+  permisos: UserPermissions,
 ): KnownBlock[] {
   const blocks: KnownBlock[] = [
     {
@@ -41,68 +43,76 @@ export function buildThHomeBlocks(
         text: "Paz y Salvo · Talento Humano",
       },
     },
-
-    {
-      type: "section",
-      fields: [
-        {
-          type: "mrkdwn",
-          text: `*Procesos activos*\n${summary.activos}`,
-        },
-        {
-          type: "mrkdwn",
-          text: `*Vencen hoy*\n${summary.vencenHoy}`,
-        },
-        {
-          type: "mrkdwn",
-          text: `*Vencidos*\n${summary.vencidos}`,
-        },
-      ],
-    },
-
-    {
-      type: "actions",
-      elements: [
-        {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "Crear Paz y Salvo",
-          },
-          style: "primary",
-          action_id: "pys_create_process",
-        },
-      ],
-    },
-
-    {
-      type: "divider",
-    },
-
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*Procesos activos*",
-      },
-    },
   ];
 
-  if (procesos.length === 0) {
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "No hay procesos activos.",
-      },
-    });
-
-    return blocks;
-  }
-
-  for (const proceso of procesos) {
+  if (permisos.puedeAdministrarPys) {
     blocks.push(
       {
+        type: "section",
+        fields: [
+          {
+            type: "mrkdwn",
+            text: `*Procesos activos*\n${summary.activos}`,
+          },
+          {
+            type: "mrkdwn",
+            text: `*Vencen hoy*\n${summary.vencenHoy}`,
+          },
+          {
+            type: "mrkdwn",
+            text: `*Vencidos*\n${summary.vencidos}`,
+          },
+        ],
+      },
+
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Crear Paz y Salvo",
+            },
+            action_id: "pys_create_process",
+            style: "primary",
+          },
+        ],
+      },
+      {
+        type: "divider",
+      },
+
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "*Procesos activos*",
+        },
+      },
+    );
+
+    if (procesos.length === 0) {
+      blocks.push(
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: "No hay procesos activos.",
+          },
+        },
+        {
+          type: "divider",
+        },
+      );
+
+      return blocks;
+    }
+
+    for (const proceso of procesos) {
+      const listoParaCierre = proceso.estado === "Pendiente de aprobación";
+
+      blocks.push({
         type: "section",
         text: {
           type: "mrkdwn",
@@ -113,35 +123,51 @@ export function buildThHomeBlocks(
             `Fecha límite: ${proceso.fechaLimite}\n` +
             `Avance: ${proceso.porcentajeAvance}%`,
         },
-        accessory: {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "Ver detalle",
+      });
+
+      const actions: KnownBlock = {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Ver detalle",
+            },
+            action_id: "pys_view_process",
+            value: proceso.procesoId,
           },
-          action_id: "pys_view_process",
-          value: proceso.procesoId,
-        },
-      },
-      {
+
+          ...(listoParaCierre
+            ? [
+                {
+                  type: "button" as const,
+                  text: {
+                    type: "plain_text" as const,
+                    text: "Cerrar Paz y Salvo",
+                  },
+                  action_id: "pys_close_process",
+                  value: proceso.procesoId,
+                  style: "primary" as const,
+                },
+              ]
+            : []),
+        ],
+      };
+      blocks.push(actions, {
         type: "divider",
-      },
-    );
+      });
+    }
   }
 
   if (misAreas.length > 0) {
-    blocks.push(
-      {
-        type: "divider",
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*Mis áreas pendientes: ${misAreas.length}*`,
       },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `*Mis áreas pendientes: ${misAreas.length}*`,
-        },
-      },
-    );
+    });
 
     for (const area of misAreas) {
       blocks.push({

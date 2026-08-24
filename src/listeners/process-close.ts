@@ -1,0 +1,179 @@
+import type { App } from "@slack/bolt";
+
+import { canAdministerPys } from "../services/authorization.service.js";
+import { closeProcess } from "../services/process-close.service.js";
+import { publishHome } from "../services/home-publish.service.js";
+import { getProcesos } from "../repositories/procesos-read.repository.js";
+import { correlationId, logger } from "../utils/logger.js";
+import { buildCloseProcessView } from "../views/close-process.view.js";
+
+export function registerProcessCloseListeners(app: App): void {
+  app.action("pys_close_process", async ({ ack, action, body, client }) => {
+    await ack();
+
+    const cid = correlationId("close");
+
+    if (action.type !== "button") {
+      return;
+    }
+
+    const procesoId = action.value;
+
+    if (!procesoId) {
+      return;
+    }
+
+    if (!("trigger_id" in body)) {
+      logger.error(
+        {
+          cid,
+          procesoId,
+          userId: body.user.id,
+          action: "open_close_process",
+        },
+        "Interacción sin trigger_id",
+      );
+
+      return;
+    }
+
+    try {
+      const autorizado = await canAdministerPys(client, body.user.id);
+
+      if (!autorizado) {
+        throw new Error("Usuario no autorizado para cerrar procesos");
+      }
+
+      const procesos = await getProcesos(client);
+
+      const proceso = procesos.find((item) => item.procesoId === procesoId);
+
+      if (!proceso) {
+        throw new Error(`Proceso no encontrado: ${procesoId}`);
+      }
+
+      if (proceso.estado !== "Pendiente de aprobación") {
+        throw new Error(
+          `El proceso no está listo para cierre. Estado actual: ${proceso.estado}`,
+        );
+      }
+
+      await client.views.open({
+        trigger_id: body.trigger_id,
+
+        view: buildCloseProcessView(proceso.procesoId, proceso.empleadoId, cid),
+      });
+
+      logger.info(
+        {
+          cid,
+          procesoId,
+          userId: body.user.id,
+          action: "close_process_modal_opened",
+        },
+        "Modal de cierre abierto",
+      );
+    } catch (err) {
+      logger.error(
+        {
+          cid,
+          procesoId,
+          userId: body.user.id,
+          err,
+          action: "close_process_modal_failed",
+        },
+        "Error abriendo modal de cierre",
+      );
+
+      await client.chat.postMessage({
+        channel: body.user.id,
+
+        text: `No fue posible abrir el cierre del proceso. Referencia: ${cid}`,
+      });
+    }
+  });
+
+  app.view("pys_close_process_submit", async ({ ack, body, view, client }) => {
+    const metadata = JSON.parse(view.private_metadata || "{}") as {
+      procesoId?: string;
+      cid?: string;
+    };
+
+    const procesoId = metadata.procesoId;
+
+    const cid = metadata.cid ?? correlationId("close");
+
+    if (!procesoId) {
+      await ack();
+      return;
+    }
+
+    const commentBlock = view.state.values.close_comment;
+
+    const comentario = commentBlock?.close_comment_value?.value ?? "";
+
+    await ack();
+
+    try {
+      /*
+       * Revalidamos autorización
+       * en backend al momento real
+       * del cierre.
+       */
+      const autorizado = await canAdministerPys(client, body.user.id);
+
+      if (!autorizado) {
+        throw new Error("Usuario no autorizado para cerrar procesos");
+      }
+
+      const result = await closeProcess(client, {
+        procesoId,
+        usuarioId: body.user.id,
+        comentario,
+        cid,
+      });
+
+      await publishHome(client, body.user.id);
+
+      logger.info(
+        {
+          cid,
+          procesoId: result.procesoId,
+          userId: body.user.id,
+          alreadyClosed: result.alreadyClosed,
+          action: "process_closed",
+        },
+        "Paz y Salvo cerrado correctamente",
+      );
+
+      await client.chat.postMessage({
+        channel: body.user.id,
+
+        text:
+          "✅ *Paz y Salvo cerrado correctamente*\n\n" +
+          `*Proceso:* ${result.procesoId}\n` +
+          `*Empleado:* <@${result.empleadoId}>` +
+          (comentario.trim() ? `\n*Comentario:* ${comentario.trim()}` : ""),
+      });
+    } catch (err) {
+      logger.error(
+        {
+          cid,
+          procesoId,
+          userId: body.user.id,
+          err,
+          action: "process_close_failed",
+        },
+        "Error cerrando Paz y Salvo",
+      );
+
+      await client.chat.postMessage({
+        channel: body.user.id,
+
+        text: `No fue posible cerrar el Paz y Salvo. Referencia: ${cid}`,
+      });
+
+      await publishHome(client, body.user.id);
+    }
+  });
+}

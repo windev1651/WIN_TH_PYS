@@ -5,6 +5,7 @@ import { registerProcessCreateListeners } from "./listeners/process-create.js";
 import { registerProcessDetailListeners } from "./listeners/process-detail.js";
 import { registerManageTasksListeners } from "./listeners/manage-tasks.js";
 import { registerManageAreaListeners } from "./listeners/manage-area.js";
+import { registerProcessCloseListeners } from "./listeners/process-close.js";
 
 import { logger } from "./utils/logger.js";
 import { validateSlackConfiguration } from "./config/slack/validate.js";
@@ -36,6 +37,7 @@ registerProcessCreateListeners(app);
 registerProcessDetailListeners(app);
 registerManageTasksListeners(app);
 registerManageAreaListeners(app);
+registerProcessCloseListeners(app);
 
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, "Apagando TH_PYS");

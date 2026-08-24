@@ -50,6 +50,10 @@ export const slackLists = {
     name: "TH_PYS_Notificaciones",
     id: "F0BPY8RMXPZ",
   },
+  usuariosAutorizados: {
+    name: "TH_PYS_UsuariosAutorizados",
+    id: "F0BRPNKA72T",
+  },
 } as const;
 
 export type SlackListKey = keyof typeof slackLists;

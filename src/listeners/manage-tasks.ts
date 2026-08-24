@@ -253,6 +253,20 @@ export function registerManageTasksListeners(app: App): void {
               `${detalleAreas}\n\n` +
               "La aprobación fue automática porque eres el Responsable Funcional y el único Responsable Operativo del área.",
           });
+
+          const procesoListo = resultados.find(
+            (resultado) => resultado.listoParaCierre,
+          );
+
+          if (procesoListo) {
+            await client.chat.postMessage({
+              channel: body.user.id,
+              text:
+                "✅ *Todas las áreas del proceso están completas.*\n\n" +
+                `*Proceso:* ${procesoListo.procesoId}\n` +
+                "El Paz y Salvo quedó pendiente de cierre por Talento Humano.",
+            });
+          }
         }
       } else {
         await client.chat.postMessage({
