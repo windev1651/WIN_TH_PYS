@@ -13,3 +13,41 @@ export async function getMaxTareasVista(client: WebClient): Promise<number> {
 
   return Number.isFinite(value) && value > 0 ? value : 6;
 }
+
+export async function getCanalNotificacionesTH(
+  client: WebClient,
+): Promise<string | null> {
+  const parametros = await getParametros(client);
+
+  const parametro = parametros.find(
+    (item) => item.clave === "CanalNotificacionesTH" && item.activo,
+  );
+
+  const valor = parametro?.valor?.trim();
+
+  return valor || null;
+}
+
+export async function getCronNotificacionUsuariosInactivos(
+  client: WebClient,
+): Promise<string | null> {
+  const parametros = await getParametros(client);
+
+  const parametro = parametros.find(
+    (item) => item.clave === "CronNtificacionUsuariosInactivos" && item.activo,
+  );
+
+  const valor = parametro?.valor?.trim();
+
+  return valor || null;
+}
+
+export async function getSchedulerTimezone(client: WebClient): Promise<string> {
+  const parametros = await getParametros(client);
+
+  const parametro = parametros.find(
+    (item) => item.clave === "TimezoneScheduler" && item.activo,
+  );
+
+  return parametro?.valor?.trim() || "America/Bogota";
+}

@@ -186,6 +186,15 @@ export async function getAllTareasProceso(
   return parseTareas(client, items);
 }
 
+export async function getTareaByTaskId(
+  client: WebClient,
+  taskId: string,
+): Promise<TareaProcesoDetail | null> {
+  const tareas = await getAllTareasProceso(client);
+
+  return tareas.find((item) => item.taskId === taskId) ?? null;
+}
+
 async function parseTareas(
   client: WebClient,
   items: SlackListItem[],

@@ -12,6 +12,11 @@ import {
 } from "./list-helpers.js";
 import { getAllListItems } from "../services/slack-list-read.service.js";
 
+import {
+  updateListItem,
+  userCell,
+} from "../services/slack-list-write.service.js";
+
 export async function getAreas(client: WebClient): Promise<Area[]> {
   const items = await getAllListItems(client, slackLists.areas.id);
   return items
@@ -25,11 +30,12 @@ export async function getAreas(client: WebClient): Promise<Area[]> {
         slackColumns.areas.responsableFuncional,
       );
 
-      if (!id || !nombre || !responsableFuncional) {
+      if (!item.id || !id || !nombre || !responsableFuncional) {
         return null;
       }
 
       return {
+        slackItemId: item.id,
         id,
         nombre,
         responsableFuncional,
@@ -39,4 +45,14 @@ export async function getAreas(client: WebClient): Promise<Area[]> {
     })
     .filter((item): item is Area => item !== null)
     .sort((a, b) => a.orden - b.orden);
+}
+
+export async function updateAreaResponsableFuncional(
+  client: WebClient,
+  slackItemId: string,
+  nuevoResponsableId: string,
+): Promise<void> {
+  await updateListItem(client, slackLists.areas.id, slackItemId, [
+    userCell(slackColumns.areas.responsableFuncional, nuevoResponsableId),
+  ]);
 }

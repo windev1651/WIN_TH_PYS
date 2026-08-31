@@ -4,13 +4,20 @@ import { WebClient } from "@slack/web-api";
 import { getTiposSolicitud } from "../repositories/tipos-solicitud.repository.js";
 import { correlationId, logger } from "../utils/logger.js";
 import { createPazYSalvo } from "../services/process-create.service.js";
+import { notifyProcessCreated } from "../services/notification.service.js";
+
 import { getCachedValue } from "../services/reference-data-cache.service.js";
+import {
+  buildProcessCreatedDirectMessage,
+  buildProcessCreatedChannelMessage,
+} from "../views/process-created-message.js";
 
 export async function getCachedTiposSolicitud(client: WebClient) {
   return getCachedValue("tiposSolicitud", 60_000, () =>
     getTiposSolicitud(client),
   );
 }
+
 export function registerProcessCreateListeners(app: App): void {
   app.action("pys_create_process", async ({ ack, body, client }) => {
     await ack();
@@ -162,24 +169,15 @@ export function registerProcessCreateListeners(app: App): void {
     };
 
     const cid = metadata.cid ?? correlationId("create");
-
     const employeeBlock = view.state.values.employee;
-
     const requestTypeBlock = view.state.values.request_type;
-
     const exitDateBlock = view.state.values.exit_date;
-
     const commentBlock = view.state.values.comment;
-
     const employeeId = employeeBlock?.employee_id?.selected_user;
-
     const tipoSolicitudId =
       requestTypeBlock?.request_type_id?.selected_option?.value;
-
     const fechaSalida = exitDateBlock?.exit_date_value?.selected_date;
-
     const comentarioTH = commentBlock?.comment_value?.value ?? "";
-
     const errors: Record<string, string> = {};
 
     if (!employeeId) {
@@ -230,9 +228,19 @@ export function registerProcessCreateListeners(app: App): void {
         cid,
       );
 
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: `Paz y Salvo creado correctamente: ${result.proceso.procesoId}`,
+      const directMessage = buildProcessCreatedDirectMessage(result);
+
+      const channelMessage = buildProcessCreatedChannelMessage(
+        result,
+        body.user.id,
+      );
+
+      await notifyProcessCreated(client, {
+        cid,
+        procesoId: result.proceso.procesoId,
+        createdByUserId: body.user.id,
+        directMessage,
+        channelMessage,
       });
 
       logger.info(

@@ -7,7 +7,10 @@ import {
   CompleteTaskResult,
 } from "../services/task-management.service.js";
 import { correlationId, logger } from "../utils/logger.js";
-import { buildManageTasksView } from "../views/manage-tasks.view.js";
+import {
+  buildManageTasksView,
+  buildLoadingManageTasksView,
+} from "../views/manage-tasks.view.js";
 import { publishHome } from "../services/home-publish.service.js";
 import { getProcesos } from "../repositories/procesos-read.repository.js";
 import { getMaxTareasVista } from "../services/runtime-config.service.js";
@@ -25,6 +28,15 @@ export function registerManageTasksListeners(app: App): void {
     const procesoId = action.value;
 
     if (!procesoId) {
+      logger.error(
+        {
+          cid,
+          userId: body.user.id,
+          action: "manage_tasks_missing_process_id",
+        },
+        "La gestión de tareas no recibió procesoId",
+      );
+
       return;
     }
 
@@ -32,6 +44,7 @@ export function registerManageTasksListeners(app: App): void {
       logger.error(
         {
           cid,
+          procesoId,
           userId: body.user.id,
           action: "open_manage_tasks",
         },
@@ -41,81 +54,141 @@ export function registerManageTasksListeners(app: App): void {
       return;
     }
 
+    let openedViewId: string | undefined;
+
     try {
+      /*
+       * Abrimos inmediatamente.
+       */
+      const openResult = await client.views.open({
+        trigger_id: body.trigger_id,
+
+        view: buildLoadingManageTasksView(cid),
+      });
+
+      openedViewId = openResult.view?.id;
+
+      if (!openedViewId) {
+        throw new Error(
+          "Slack no retornó el ID del modal de gestión de tareas",
+        );
+      }
+
+      /*
+       * Ahora hacemos las lecturas.
+       */
       const [tareas, procesos, maxTareasVista] = await Promise.all([
         getTareasUsuario(client, body.user.id),
+
         getProcesos(client),
+
         getMaxTareasVista(client),
       ]);
 
+      /*
+       * IMPORTANTE:
+       * solo tareas del proceso
+       * seleccionado.
+       */
       const tareasProceso = tareas.filter(
         (tarea) => tarea.procesoId === procesoId,
       );
 
-      if (tareasProceso.length === 0) {
-        await client.chat.postMessage({
-          channel: body.user.id,
-          text: "No tienes tareas pendientes para este proceso.",
+      const proceso = procesos.find((item) => item.procesoId === procesoId);
+
+      if (!proceso) {
+        throw new Error(`Proceso no encontrado: ${procesoId}`);
+      }
+
+      const tareasConProceso = tareasProceso
+        .map((tarea) => ({
+          ...tarea,
+
+          empleadoId: proceso.empleadoId,
+
+          fechaLimiteProceso: proceso.fechaLimite,
+        }))
+        .sort((a, b) => a.ordenTarea - b.ordenTarea);
+
+      if (tareasConProceso.length === 0) {
+        await client.views.update({
+          view_id: openedViewId,
+
+          view: {
+            type: "modal",
+
+            callback_id: "pys_manage_tasks_empty",
+
+            title: {
+              type: "plain_text",
+              text: "Gestionar tareas",
+            },
+
+            close: {
+              type: "plain_text",
+              text: "Cerrar",
+            },
+
+            blocks: [
+              {
+                type: "section",
+
+                text: {
+                  type: "mrkdwn",
+
+                  text: `✅ No tienes tareas pendientes para gestionar en el proceso *${procesoId}*.`,
+                },
+              },
+            ],
+          },
         });
 
         return;
       }
 
-      const tareasConProceso = tareasProceso
-        .map((tarea) => {
-          const proceso = procesos.find(
-            (item) => item.procesoId === tarea.procesoId,
-          );
+      const initialPage = 0;
 
-          if (!proceso) {
-            return null;
-          }
+      await client.views.update({
+        view_id: openedViewId,
 
-          return {
-            ...tarea,
-            empleadoId: proceso.empleadoId,
-            fechaLimiteProceso: proceso.fechaLimite,
-          };
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null)
-        .sort((a, b) => a.ordenTarea - b.ordenTarea);
-
-      // if (tareas.length === 0) {
-      //   await client.chat.postMessage({
-      //     channel: body.user.id,
-      //     text: "No tienes tareas pendientes para gestionar.",
-      //   });
-
-      //   return;
-      // }
-
-      await client.views.open({
-        trigger_id: body.trigger_id,
-
-        view: buildManageTasksView(tareasConProceso, cid, maxTareasVista, 0),
+        view: buildManageTasksView(
+          tareasConProceso,
+          cid,
+          maxTareasVista,
+          initialPage,
+        ),
       });
 
       logger.info(
         {
           cid,
-          userId: body.user.id,
-          tareas: Math.min(tareasConProceso.length, maxTareasVista),
           procesoId,
+
+          userId: body.user.id,
+
+          tareas: Math.min(tareasConProceso.length, maxTareasVista),
+
           action: "manage_tasks_opened",
         },
         "Modal de gestión de tareas abierto",
       );
     } catch (err) {
-      logger.error(
-        {
-          cid,
-          userId: body.user.id,
-          err,
-          action: "manage_tasks_open_failed",
-        },
-        "Error abriendo gestión de tareas",
-      );
+      // Mantén aquí exactamente
+      // el catch que ya tienes.
     }
+  });
+
+  /*
+   * El checkbox genera una interacción
+   * Block Kit al marcarse/desmarcarse.
+   *
+   * No actualizamos nada todavía:
+   * solamente confirmamos la interacción.
+   * El estado se procesará al pulsar
+   * "Guardar cambios".
+   */
+  app.action("pys_task_complete_checkbox", async ({ ack }) => {
+    await ack();
   });
 
   app.view("pys_manage_tasks_submit", async ({ ack, body, view, client }) => {
@@ -168,7 +241,8 @@ export function registerManageTasksListeners(app: App): void {
       for (const tarea of tareasVisibles) {
         const completeBlock = view.state.values[`complete_${tarea.taskId}`];
         const commentBlock = view.state.values[`comment_${tarea.taskId}`];
-        const selectedOptions = completeBlock?.complete?.selected_options;
+        const selectedOptions =
+          completeBlock?.pys_task_complete_checkbox?.selected_options;
         const shouldComplete =
           selectedOptions?.some((option) => option.value === "complete") ??
           false;

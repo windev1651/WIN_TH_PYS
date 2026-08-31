@@ -35,6 +35,15 @@ export async function getAreasProceso(
     .sort((a, b) => a.ordenArea - b.ordenArea);
 }
 
+export async function getAreaByAreaProcesoId(
+  client: WebClient,
+  areaProcesoId: string,
+): Promise<AreaProcesoDetail | null> {
+  const areas = await getAllAreasProceso(client);
+
+  return areas.find((item) => item.areaProcesoId === areaProcesoId) ?? null;
+}
+
 export async function getAreasUsuario(
   client: WebClient,
   userId: string,

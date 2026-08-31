@@ -26,10 +26,12 @@
   "dependencies": {
     "@slack/bolt": "^5.0.0",
     "dotenv": "^16.4.5",
+    "node-cron": "^4.6.0",
     "pino": "^9.3.2"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
+    "@types/node-cron": "^3.0.11",
     "prettier": "^3.9.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"

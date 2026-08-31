@@ -7,6 +7,7 @@ export type TipoSolicitud = {
 };
 
 export type Area = {
+  slackItemId: string;
   id: string;
   nombre: string;
   responsableFuncional: string;
@@ -15,6 +16,7 @@ export type Area = {
 };
 
 export type ConfigTarea = {
+  slackItemId: string;
   id: string;
   tipoSolicitudId: string;
   areaId: string;

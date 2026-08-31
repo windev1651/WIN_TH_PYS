@@ -13,6 +13,10 @@ import {
 } from "./list-helpers.js";
 import { getSelectOptionMap } from "../services/slack-list-schema.service.js";
 import { getAllListItems } from "../services/slack-list-read.service.js";
+import {
+  updateListItem,
+  userCell,
+} from "../services/slack-list-write.service.js";
 
 export async function getConfigTareas(
   client: WebClient,
@@ -50,6 +54,7 @@ export async function getConfigTareas(
       );
 
       if (
+        !item.id ||
         !id ||
         !tipoSolicitudId ||
         !areaId ||
@@ -60,6 +65,7 @@ export async function getConfigTareas(
       }
 
       return {
+        slackItemId: item.id,
         id,
         tipoSolicitudId,
         areaId,
@@ -89,4 +95,17 @@ export async function getConfigTareas(
 
       return a.ordenTarea - b.ordenTarea;
     });
+}
+
+export async function updateConfigTareaResponsableOperativo(
+  client: WebClient,
+  slackItemId: string,
+  nuevoResponsableId: string,
+): Promise<void> {
+  await updateListItem(client, slackLists.configTareas.id, slackItemId, [
+    userCell(
+      slackColumns.configTareas.responsableOperativo,
+      nuevoResponsableId,
+    ),
+  ]);
 }

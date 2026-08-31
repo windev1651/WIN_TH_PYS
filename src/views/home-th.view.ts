@@ -77,6 +77,14 @@ export function buildHomeBlocks(
             action_id: "pys_create_process",
             style: "primary",
           },
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Administrar responsables",
+            },
+            action_id: "pys_manage_responsibles",
+          },
         ],
       },
       {

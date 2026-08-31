@@ -95,3 +95,16 @@ export async function updateAreaEstado(
     selectCell(slackColumns.areasProceso.estado, estadoOption),
   ]);
 }
+
+export async function updateAreaResponsableFuncional(
+  client: WebClient,
+  slackItemId: string,
+  nuevoResponsableId: string,
+): Promise<void> {
+  await updateListItem(client, slackLists.areasProceso.id, slackItemId, [
+    userCell(
+      slackColumns.areasProceso.responsableFuncionalSnapshot,
+      nuevoResponsableId,
+    ),
+  ]);
+}

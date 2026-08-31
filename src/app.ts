@@ -6,6 +6,11 @@ import { registerProcessDetailListeners } from "./listeners/process-detail.js";
 import { registerManageTasksListeners } from "./listeners/manage-tasks.js";
 import { registerManageAreaListeners } from "./listeners/manage-area.js";
 import { registerProcessCloseListeners } from "./listeners/process-close.js";
+import { registerTaskReassignmentListeners } from "./listeners/task-reassignement.js";
+import { registerFunctionalReassignmentListeners } from "./listeners/functional-reassignment.js";
+import { registerManageResponsiblesListeners } from "./listeners/manage-responsibles.js";
+
+import { registerSchedulers } from "./scheduler.js";
 
 import { logger } from "./utils/logger.js";
 import { validateSlackConfiguration } from "./config/slack/validate.js";
@@ -32,12 +37,16 @@ const app = new App({
   logLevel: boltLogLevel(env.logLevel),
 });
 
+//Listeners
 registerAppHomeListeners(app);
 registerProcessCreateListeners(app);
 registerProcessDetailListeners(app);
 registerManageTasksListeners(app);
 registerManageAreaListeners(app);
 registerProcessCloseListeners(app);
+registerTaskReassignmentListeners(app);
+registerFunctionalReassignmentListeners(app);
+registerManageResponsiblesListeners(app);
 
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, "Apagando TH_PYS");
@@ -51,6 +60,10 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
 (async () => {
   try {
     await app.start();
+
+    //Schedules
+    await registerSchedulers(app.client);
+
     logger.info("TH_PYS iniciado correctamente en Socket Mode");
   } catch (error) {
     logger.fatal({ error }, "No fue posible iniciar TH_PYS");

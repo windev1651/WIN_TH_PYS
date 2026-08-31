@@ -30,7 +30,7 @@ export function buildManageTasksView(
 
   const visibilityMessage =
     tareas.length > maxTareasVista
-      ? `Tienes ${tareas.length} tareas pendientes en este proceso. Se muestran ${maxTareasVista}.`
+      ? `Tienes ${tareas.length} tareas pendientes en este proceso. Se muestran ${visibleTasks.length}.`
       : `Tienes ${tareas.length} tareas pendientes en este proceso.`;
 
   const blocks: KnownBlock[] = [
@@ -53,7 +53,7 @@ export function buildManageTasksView(
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `*Proceso: ${procesoId} / <@${firstTask.empleadoId}>*`,
+      text: `*Proceso: ${procesoId} / ` + `<@${firstTask.empleadoId}>*`,
     },
   });
 
@@ -74,19 +74,22 @@ export function buildManageTasksView(
       blocks.push({
         type: "section",
         block_id: `complete_${tarea.taskId}`,
+
         text: {
           type: "mrkdwn",
           text: "*Acción*",
         },
+
         accessory: {
           type: "checkboxes",
-          action_id: "complete",
+          action_id: "pys_task_complete_checkbox",
           options: [
             {
               text: {
                 type: "plain_text",
                 text: "Marcar como completada",
               },
+
               value: "complete",
             },
           ],
@@ -95,9 +98,11 @@ export function buildManageTasksView(
     } else {
       blocks.push({
         type: "context",
+
         elements: [
           {
             type: "mrkdwn",
+
             text:
               "📎 Esta tarea requiere evidencia. " +
               "La carga de evidencia se habilitará en el siguiente flujo.",
@@ -108,16 +113,23 @@ export function buildManageTasksView(
 
     blocks.push({
       type: "input",
+
       block_id: `comment_${tarea.taskId}`,
+
       optional: true,
+
       label: {
         type: "plain_text",
         text: "Comentario",
       },
+
       element: {
         type: "plain_text_input",
+
         action_id: "comment",
+
         multiline: true,
+
         initial_value:
           tarea.comentario && tarea.comentario.trim() !== ""
             ? tarea.comentario
@@ -133,9 +145,11 @@ export function buildManageTasksView(
   if (totalPages > 1) {
     blocks.push({
       type: "context",
+
       elements: [
         {
           type: "mrkdwn",
+
           text:
             `Página *${safePage + 1} de ${totalPages}* · ` +
             `${tareas.length} tareas pendientes`,
@@ -171,5 +185,40 @@ export function buildManageTasksView(
     },
 
     blocks,
+  };
+}
+
+export function buildLoadingManageTasksView(cid: string): View {
+  return {
+    type: "modal",
+
+    callback_id: "pys_manage_tasks_loading",
+
+    private_metadata: JSON.stringify({
+      cid,
+    }),
+
+    title: {
+      type: "plain_text",
+      text: "Gestionar tareas",
+    },
+
+    close: {
+      type: "plain_text",
+      text: "Cerrar",
+    },
+
+    blocks: [
+      {
+        type: "section",
+
+        text: {
+          type: "mrkdwn",
+
+          text:
+            "*Cargando tus tareas pendientes...*\n\n" + "Espera un momento.",
+        },
+      },
+    ],
   };
 }

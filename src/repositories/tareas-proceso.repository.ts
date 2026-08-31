@@ -100,3 +100,16 @@ export async function updateTareaEstado(
     fields,
   );
 }
+
+export async function updateTareaResponsable(
+  client: WebClient,
+  slackItemId: string,
+  nuevoResponsableId: string,
+): Promise<void> {
+  await updateListItem(client, slackLists.tareasProceso.id, slackItemId, [
+    userCell(
+      slackColumns.tareasProceso.responsableOperativoSnapshot,
+      nuevoResponsableId,
+    ),
+  ]);
+}

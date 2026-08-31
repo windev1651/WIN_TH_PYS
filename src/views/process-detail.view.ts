@@ -2,6 +2,11 @@ import type { KnownBlock, View } from "@slack/types";
 
 import type { ProcessDetail } from "../types/process-detail.js";
 
+type ProcessDetailViewOptions = {
+  puedeAdministrar: boolean;
+  cid: string;
+};
+
 function taskEmoji(estado: string): string {
   switch (estado) {
     case "Completada":
@@ -22,7 +27,10 @@ function taskEmoji(estado: string): string {
   }
 }
 
-export function buildProcessDetailView(detail: ProcessDetail): View {
+export function buildProcessDetailView(
+  detail: ProcessDetail,
+  options: ProcessDetailViewOptions,
+): View {
   const blocks: KnownBlock[] = [
     {
       type: "section",
@@ -74,6 +82,12 @@ export function buildProcessDetailView(detail: ProcessDetail): View {
   }
 
   for (const area of detail.areas) {
+    const procesoEditable = ![
+      "Finalizado",
+      "Finalizado con excepción",
+      "Cancelado",
+    ].includes(detail.estado);
+
     blocks.push({
       type: "header",
       text: {
@@ -92,6 +106,27 @@ export function buildProcessDetailView(detail: ProcessDetail): View {
       },
     });
 
+    if (
+      options.puedeAdministrar &&
+      procesoEditable &&
+      area.estado !== "Completada"
+    ) {
+      blocks.push({
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Reasignar responsable funcional",
+            },
+            action_id: "pys_reassign_functional",
+            value: area.areaProcesoId,
+          },
+        ],
+      });
+    }
+
     for (const tarea of area.tareas) {
       const evidencia = tarea.requiereEvidencia ? "Sí" : "No";
 
@@ -99,6 +134,7 @@ export function buildProcessDetailView(detail: ProcessDetail): View {
 
       blocks.push({
         type: "section",
+
         text: {
           type: "mrkdwn",
           text:
@@ -106,6 +142,30 @@ export function buildProcessDetailView(detail: ProcessDetail): View {
             `Responsable: <@${tarea.responsableOperativoId}>\n` +
             `Estado: ${tarea.estado} · Obligatoria: ${obligatoria} · Evidencia: ${evidencia}`,
         },
+
+        ...(options.puedeAdministrar &&
+        procesoEditable &&
+        !["Completada", "No aplica"].includes(tarea.estado)
+          ? {
+              accessory: {
+                type: "button" as const,
+
+                text: {
+                  type: "plain_text" as const,
+                  text: "Reasignar",
+                },
+
+                action_id: "pys_reassign_task",
+
+                /*
+                 * El taskId es suficiente.
+                 * El backend volverá a
+                 * resolver y validar todo.
+                 */
+                value: tarea.taskId,
+              },
+            }
+          : {}),
       });
     }
 
@@ -119,7 +179,11 @@ export function buildProcessDetailView(detail: ProcessDetail): View {
 
     callback_id: "pys_process_detail",
 
-    private_metadata: detail.procesoId,
+    private_metadata: JSON.stringify({
+      procesoId: detail.procesoId,
+
+      cid: options.cid,
+    }),
 
     title: {
       type: "plain_text",
@@ -132,5 +196,39 @@ export function buildProcessDetailView(detail: ProcessDetail): View {
     },
 
     blocks,
+  };
+}
+
+export function buildLoadingProcessDetailView(procesoId: string): View {
+  return {
+    type: "modal",
+
+    callback_id: "pys_process_detail_loading",
+
+    private_metadata: JSON.stringify({
+      procesoId,
+    }),
+
+    title: {
+      type: "plain_text",
+      text: "Detalle Paz y Salvo",
+    },
+
+    close: {
+      type: "plain_text",
+      text: "Cerrar",
+    },
+
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            `Cargando información de *${procesoId}*...\n\n` +
+            "Espera un momento.",
+        },
+      },
+    ],
   };
 }
