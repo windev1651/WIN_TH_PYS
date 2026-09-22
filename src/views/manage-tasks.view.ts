@@ -70,6 +70,16 @@ export function buildManageTasksView(
       },
     });
 
+    if (tarea.comentarioRechazo?.trim()) {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "⚠️ *Motivo de devolución*\n" + tarea.comentarioRechazo.trim(),
+        },
+      });
+    }
+
     if (!tarea.requiereEvidencia) {
       blocks.push({
         type: "section",
@@ -97,6 +107,25 @@ export function buildManageTasksView(
       });
     } else {
       blocks.push({
+        type: "input",
+
+        block_id: `evidence_${tarea.taskId}`,
+        optional: true,
+
+        label: {
+          type: "plain_text",
+          text: "Evidencia",
+        },
+
+        element: {
+          type: "file_input",
+          action_id: "evidence_file",
+          filetypes: ["pdf", "jpg", "jpeg", "png"],
+          max_files: 1,
+        },
+      });
+
+      blocks.push({
         type: "context",
 
         elements: [
@@ -104,8 +133,8 @@ export function buildManageTasksView(
             type: "mrkdwn",
 
             text:
-              "📎 Esta tarea requiere evidencia. " +
-              "La carga de evidencia se habilitará en el siguiente flujo.",
+              "📎 Adjunta la evidencia requerida. " +
+              "La tarea quedará pendiente de revisión por el Responsable Funcional.",
           },
         ],
       });
@@ -113,27 +142,21 @@ export function buildManageTasksView(
 
     blocks.push({
       type: "input",
-
       block_id: `comment_${tarea.taskId}`,
-
       optional: true,
-
       label: {
         type: "plain_text",
         text: "Comentario",
       },
-
       element: {
         type: "plain_text_input",
-
         action_id: "comment",
-
         multiline: true,
 
-        initial_value:
-          tarea.comentario && tarea.comentario.trim() !== ""
-            ? tarea.comentario
-            : undefined,
+        // initial_value:
+        //   tarea.comentario && tarea.comentario.trim() !== ""
+        //     ? tarea.comentario
+        //     : undefined,
       },
     });
 
@@ -203,10 +226,10 @@ export function buildLoadingManageTasksView(cid: string): View {
       text: "Gestionar tareas",
     },
 
-    close: {
-      type: "plain_text",
-      text: "Cerrar",
-    },
+    // close: {
+    //   type: "plain_text",
+    //   text: "Cerrar",
+    // },
 
     blocks: [
       {

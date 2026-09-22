@@ -1,5 +1,6 @@
 import type { WebClient } from "@slack/web-api";
 
+import { CLOSED_PROCESS_STATUSES, TASK_STATUS } from "../constants/status.js";
 import type { ProcesoListItem } from "../types/process-read.js";
 import { getAllAreasProceso } from "../repositories/areas-proceso-read.repository.js";
 import { getProcesos } from "../repositories/procesos-read.repository.js";
@@ -56,9 +57,7 @@ export type HomeAreaItem = {
 };
 
 function isClosed(estado: string): boolean {
-  return ["Finalizado", "Finalizado con excepción", "Cancelado"].includes(
-    estado,
-  );
+  return CLOSED_PROCESS_STATUSES.some((status) => status === estado);
 }
 
 function classifyProcess(
@@ -111,7 +110,11 @@ export async function getHomeData(client: WebClient, userId: string) {
     .filter(
       (tarea) =>
         tarea.responsableOperativoId === userId &&
-        !["Completada", "No aplica"].includes(tarea.estado),
+        ![
+          TASK_STATUS.COMPLETED,
+          TASK_STATUS.NOT_APPLICABLE,
+          TASK_STATUS.PENDING_APPROVAL,
+        ].some((status) => status === tarea.estado),
     )
     .sort((a, b) => {
       if (a.fechaLimite !== b.fechaLimite) {
@@ -217,31 +220,28 @@ export async function getHomeData(client: WebClient, userId: string) {
       );
 
       const obligatorias = tareasArea.filter(
-        (tarea) => tarea.obligatoria && tarea.estado !== "No aplica",
+        (tarea) =>
+          tarea.obligatoria && tarea.estado !== TASK_STATUS.NOT_APPLICABLE,
       );
 
-      const completadas = obligatorias.filter(
-        (tarea) => tarea.estado === "Completada",
+      const gestionadas = obligatorias.filter((tarea) =>
+        [TASK_STATUS.COMPLETED, TASK_STATUS.PENDING_APPROVAL].some(
+          (status) => status === tarea.estado,
+        ),
       ).length;
 
       const avance =
         obligatorias.length === 0
           ? 0
-          : Math.round((completadas / obligatorias.length) * 100);
+          : Math.round((gestionadas / obligatorias.length) * 100);
 
       return {
         ...area,
-
         empleadoId: proceso.empleadoId,
-
         fechaLimite: proceso.fechaLimite,
-
         tareasTotal: tareasArea.length,
-
         tareasObligatorias: obligatorias.length,
-
-        tareasCompletadas: completadas,
-
+        tareasCompletadas: gestionadas,
         avance,
       };
     })

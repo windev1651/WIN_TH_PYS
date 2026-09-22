@@ -11,9 +11,149 @@ import {
   buildManageTasksView,
   buildLoadingManageTasksView,
 } from "../views/manage-tasks.view.js";
-import { publishHome } from "../services/home-publish.service.js";
 import { getProcesos } from "../repositories/procesos-read.repository.js";
 import { getMaxTareasVista } from "../services/runtime-config.service.js";
+import { registerEvidence } from "../services/evidence-management.service.js";
+import { publishHome } from "../services/home-publish.service.js";
+
+import {
+  releaseOperationLock,
+  tryAcquireOperationLock,
+} from "../services/interaction-lock.service.js";
+
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+
+  return "Ocurrió un error inesperado.";
+}
+
+function buildManageTasksErrorView(
+  procesoId: string,
+  cid: string,
+  errorMessage: string,
+) {
+  return {
+    type: "modal" as const,
+
+    callback_id: "pys_manage_tasks_error",
+
+    private_metadata: JSON.stringify({
+      procesoId,
+      cid,
+    }),
+
+    title: {
+      type: "plain_text" as const,
+      text: "Gestionar tareas",
+    },
+
+    close: {
+      type: "plain_text" as const,
+      text: "Cerrar",
+    },
+
+    blocks: [
+      {
+        type: "section" as const,
+
+        text: {
+          type: "mrkdwn" as const,
+
+          text:
+            "⚠️ *No fue posible guardar todos los cambios.*\n\n" +
+            `${errorMessage}\n\n` +
+            `Referencia: \`${cid}\``,
+        },
+      },
+    ],
+  };
+}
+
+function buildManageTasksSuccessView(
+  procesoId: string,
+  cid: string,
+  completadas: number,
+  evidenciasRegistradas: number,
+) {
+  const resultados: string[] = [];
+
+  if (completadas > 0) {
+    resultados.push(`• Tareas gestionadas: *${completadas}*`);
+  }
+
+  if (evidenciasRegistradas > 0) {
+    resultados.push(`• Evidencias registradas: *${evidenciasRegistradas}*`);
+  }
+
+  if (resultados.length === 0) {
+    resultados.push("• No se seleccionaron cambios para guardar.");
+  }
+
+  return {
+    type: "modal" as const,
+    callback_id: "pys_manage_tasks_success",
+    notify_on_close: true,
+    private_metadata: JSON.stringify({
+      procesoId,
+      cid,
+    }),
+    title: {
+      type: "plain_text" as const,
+      text: "Gestionar tareas",
+    },
+    close: {
+      type: "plain_text" as const,
+      text: "Cerrar",
+    },
+    blocks: [
+      {
+        type: "section" as const,
+
+        text: {
+          type: "mrkdwn" as const,
+
+          text:
+            "✅ *Cambios guardados correctamente*\n\n" + resultados.join("\n"),
+        },
+      },
+    ],
+  };
+}
+
+function buildManageTasksProcessingView(procesoId: string, cid: string) {
+  return {
+    type: "modal" as const,
+
+    callback_id: "pys_manage_tasks_processing",
+
+    private_metadata: JSON.stringify({
+      procesoId,
+      cid,
+    }),
+
+    title: {
+      type: "plain_text" as const,
+      text: "Gestionar tareas",
+    },
+
+    blocks: [
+      {
+        type: "section" as const,
+
+        text: {
+          type: "mrkdwn" as const,
+
+          text:
+            "⏳ *Guardando cambios...*\n\n" +
+            "Estamos actualizando tus tareas. " +
+            "Espera hasta que termine el proceso.",
+        },
+      },
+    ],
+  };
+}
 
 export function registerManageTasksListeners(app: App): void {
   app.action("pys_manage_tasks", async ({ ack, action, body, client }) => {
@@ -198,23 +338,114 @@ export function registerManageTasksListeners(app: App): void {
       page?: number;
     };
 
+    // console.log("PRIVATE METADATA", metadata);
+
     const cid = metadata.cid ?? correlationId("tasks");
-
     const procesoId = metadata.procesoId;
-
     const page = metadata.page ?? 0;
 
     if (!procesoId) {
       await ack();
       return;
     }
+
+    //
+    /*
+     * Validación inmediata del formulario.
+     *
+     * Solo utilizamos el state recibido desde Slack.
+     * No hacemos llamadas API antes del ACK.
+     */
+    const validationErrors: Record<string, string> = {};
+
+    for (const [blockId, blockState] of Object.entries(view.state.values)) {
+      if (!blockId.startsWith("comment_")) {
+        continue;
+      }
+
+      const taskId = blockId.replace("comment_", "");
+
+      const comentario = blockState.comment?.value?.trim() ?? "";
+
+      const completeBlock = view.state.values[`complete_${taskId}`];
+      const selectedOptions =
+        completeBlock?.pys_task_complete_checkbox?.selected_options;
+
+      const marcado =
+        selectedOptions?.some((option) => option.value === "complete") ?? false;
+
+      const evidenceBlock = view.state.values[`evidence_${taskId}`];
+      const archivo = evidenceBlock?.evidence_file?.files?.[0];
+
+      const tieneAccion = marcado || Boolean(archivo);
+
+      if (tieneAccion && !comentario) {
+        validationErrors[blockId] =
+          "Debes ingresar un comentario para gestionar esta tarea.";
+
+        continue;
+      }
+
+      if (comentario && !tieneAccion) {
+        validationErrors[blockId] =
+          "Ingresaste un comentario, pero no marcaste la tarea como realizada o no cargaste una evidencia.";
+      }
+    }
+
+    if (Object.keys(validationErrors).length > 0) {
+      await ack({
+        response_action: "errors",
+        errors: validationErrors,
+      });
+
+      return;
+    }
+    //
+
     /*
      * ACK primero.
      * Las escrituras en Slack pueden tardar,
      * y no queremos exceder el timeout
      * de la interacción.
      */
-    await ack();
+    const lockKey = `manage-tasks:${body.user.id}:${procesoId}`;
+
+    const lockAcquired = tryAcquireOperationLock(lockKey, body.user.id);
+
+    if (!lockAcquired) {
+      await ack({
+        response_action: "errors",
+        errors: {},
+      });
+
+      logger.info(
+        {
+          cid,
+          procesoId,
+          userId: body.user.id,
+          action: "manage_tasks_ignored_user_busy",
+        },
+        "Gestión de tareas ignorada porque el usuario tiene una operación en curso",
+      );
+
+      return;
+    }
+
+    await ack({
+      response_action: "update",
+      view: buildManageTasksProcessingView(procesoId, cid),
+    });
+
+    let evidenceErrorContext:
+      | {
+          procesoId: string;
+          tarea: string;
+          nombreArchivo: string;
+        }
+      | undefined;
+
+    let completadas = 0;
+    let evidenciasRegistradas = 0;
 
     try {
       /*
@@ -227,20 +458,48 @@ export function registerManageTasksListeners(app: App): void {
       const maxTareasVista = await getMaxTareasVista(client);
       const tareas = await getTareasUsuario(client, body.user.id);
 
-      const tareasProceso = tareas.filter(
-        (tarea) => tarea.procesoId === procesoId,
-      );
+      const tareasProceso = tareas
+        .filter((tarea) => tarea.procesoId === procesoId)
+        .sort((a, b) => a.ordenTarea - b.ordenTarea);
 
       const start = page * maxTareasVista;
-
       const tareasVisibles = tareasProceso.slice(start, start + maxTareasVista);
-
-      let completadas = 0;
       const resultados: CompleteTaskResult[] = [];
 
+      const evidenciasDetalle: Array<{
+        procesoId: string;
+        tarea: string;
+        nombreArchivo: string;
+      }> = [];
+
       for (const tarea of tareasVisibles) {
+        // console.log("PROCESANDO TAREA", {
+        //   taskId: tarea.taskId,
+        //   tarea: tarea.tarea,
+        //   requiereEvidencia: tarea.requiereEvidencia,
+        // });
+
         const completeBlock = view.state.values[`complete_${tarea.taskId}`];
         const commentBlock = view.state.values[`comment_${tarea.taskId}`];
+
+        // console.log(
+        //   "EVIDENCE BLOCK",
+        //   tarea.taskId,
+        //   JSON.stringify(evidenceBlock, null, 2),
+        // );
+
+        // if (tarea.requiereEvidencia) {
+        //   logger.info(
+        //     {
+        //       cid,
+        //       procesoId: tarea.procesoId,
+        //       taskId: tarea.taskId,
+        //       evidenceState: evidenceBlock,
+        //     },
+        //     "Estado recibido para evidencia",
+        //   );
+        // }
+
         const selectedOptions =
           completeBlock?.pys_task_complete_checkbox?.selected_options;
         const shouldComplete =
@@ -248,9 +507,83 @@ export function registerManageTasksListeners(app: App): void {
           false;
 
         const comentario = commentBlock?.comment?.value ?? "";
+        const evidenceBlock = view.state.values[`evidence_${tarea.taskId}`];
 
+        const files = evidenceBlock?.evidence_file?.files;
+
+        const archivo = files?.[0];
+
+        const requiereComentario = shouldComplete || Boolean(archivo);
+
+        if (requiereComentario && !comentario) {
+          throw new Error(
+            `Debes ingresar un comentario para la tarea "${tarea.tarea}"`,
+          );
+        }
+
+        if (tarea.requiereEvidencia) {
+          const evidenceBlock = view.state.values[`evidence_${tarea.taskId}`];
+          const files = evidenceBlock?.evidence_file?.files;
+          const archivo = files?.[0];
+
+          if (!archivo) {
+            continue;
+          }
+          if (!comentario) {
+            throw new Error(
+              `Debes ingresar un comentario para la tarea "${tarea.tarea}"`,
+            );
+          }
+
+          evidenceErrorContext = {
+            procesoId: tarea.procesoId,
+            tarea: tarea.tarea,
+            nombreArchivo: archivo.name ?? archivo.id,
+          };
+
+          const evidenceId = await registerEvidence(client, {
+            procesoId: tarea.procesoId,
+            taskId: tarea.taskId,
+            usuarioId: body.user.id,
+            archivo,
+            comentario,
+            cid,
+          });
+
+          evidenciasDetalle.push({
+            procesoId: tarea.procesoId,
+            tarea: tarea.tarea,
+            nombreArchivo: archivo.name ?? archivo.id,
+          });
+
+          evidenciasRegistradas += 1;
+
+          logger.info(
+            {
+              cid,
+              procesoId: tarea.procesoId,
+              taskId: tarea.taskId,
+              evidenceId: evidenceId.evidenceId,
+              slackFileId: archivo.id,
+              action: "task_evidence_registered",
+            },
+            "Evidencia registrada",
+          );
+
+          continue;
+        }
+
+        /*
+         * Flujo existente para tareas
+         * sin evidencia.
+         */
         if (!shouldComplete) {
           continue;
+        }
+        if (!comentario) {
+          throw new Error(
+            `Debes ingresar un comentario para la tarea "${tarea.tarea}"`,
+          );
         }
 
         const resultado = await completeTask(client, {
@@ -275,6 +608,36 @@ export function registerManageTasksListeners(app: App): void {
         "Cambios de tareas guardados",
       );
 
+      /*
+       * Evidencias registradas.
+       */
+      if (evidenciasRegistradas > 0) {
+        const detalle = evidenciasDetalle
+          .map(
+            (item) =>
+              `• *Proceso:* ${item.procesoId}\n` +
+              `  *Tarea:* ${item.tarea}\n` +
+              `  *Evidencia:* ${item.nombreArchivo}`,
+          )
+          .join("\n\n");
+
+        await client.chat.postMessage({
+          channel: body.user.id,
+
+          text:
+            evidenciasRegistradas === 1
+              ? "📎 *Evidencia registrada correctamente*\n\n" +
+                `${detalle}\n\n` +
+                "Quedó pendiente de revisión por el Responsable Funcional."
+              : `📎 *${evidenciasRegistradas} evidencias registradas correctamente*\n\n` +
+                `${detalle}\n\n` +
+                "Quedaron pendientes de revisión por los Responsables Funcionales.",
+        });
+      }
+
+      /*
+       * Tareas completadas sin evidencia.
+       */
       if (completadas > 0) {
         const detalleTareas = resultados
           .map((resultado) => {
@@ -302,6 +665,7 @@ export function registerManageTasksListeners(app: App): void {
         const areasAutoAprobadas = resultados.filter(
           (resultado) => resultado.autoAprobacion,
         );
+
         if (areasAutoAprobadas.length > 0) {
           const areasUnicas = Array.from(
             new Map(
@@ -335,6 +699,7 @@ export function registerManageTasksListeners(app: App): void {
           if (procesoListo) {
             await client.chat.postMessage({
               channel: body.user.id,
+
               text:
                 "✅ *Todas las áreas del proceso están completas.*\n\n" +
                 `*Proceso:* ${procesoListo.procesoId}\n` +
@@ -342,16 +707,65 @@ export function registerManageTasksListeners(app: App): void {
             });
           }
         }
-      } else {
+      }
+
+      /*
+       * No se hizo absolutamente nada.
+       */
+      if (completadas === 0 && evidenciasRegistradas === 0) {
         await client.chat.postMessage({
           channel: body.user.id,
 
-          text: "No se seleccionaron tareas para completar.",
+          text: "No se seleccionaron tareas para completar ni se cargaron evidencias.",
         });
       }
 
-      await publishHome(client, body.user.id);
+      try {
+        await client.views.update({
+          view_id: view.id,
+
+          view: buildManageTasksSuccessView(
+            procesoId,
+            cid,
+            completadas,
+            evidenciasRegistradas,
+          ),
+        });
+      } catch (uiErr) {
+        logger.warn(
+          {
+            cid,
+            procesoId,
+            userId: body.user.id,
+            err: uiErr,
+            action: "manage_tasks_success_view_failed",
+          },
+          "Cambios guardados, pero no fue posible actualizar el modal",
+        );
+      }
     } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Ocurrió un error inesperado.";
+
+      try {
+        await client.views.update({
+          view_id: view.id,
+
+          view: buildManageTasksErrorView(procesoId, cid, errorMessage),
+        });
+      } catch (uiErr) {
+        logger.warn(
+          {
+            cid,
+            procesoId,
+            userId: body.user.id,
+            err: uiErr,
+            action: "manage_tasks_error_view_failed",
+          },
+          "No fue posible mostrar la vista de error de gestión de tareas",
+        );
+      }
+
       logger.error(
         {
           cid,
@@ -362,11 +776,62 @@ export function registerManageTasksListeners(app: App): void {
         "Error guardando cambios de tareas",
       );
 
+      if (evidenceErrorContext) {
+        await client.chat.postMessage({
+          channel: body.user.id,
+
+          text:
+            "⚠️ *No fue posible procesar la evidencia*\n\n" +
+            `*Proceso:* ${evidenceErrorContext.procesoId}\n` +
+            `*Tarea:* ${evidenceErrorContext.tarea}\n` +
+            `*Archivo:* ${evidenceErrorContext.nombreArchivo}\n` +
+            `*Motivo:* ${errorMessage}\n\n` +
+            `Referencia: \`${cid}\``,
+        });
+
+        return;
+      }
+
       await client.chat.postMessage({
         channel: body.user.id,
 
-        text: `No fue posible guardar los cambios. Referencia: ${cid}`,
+        text:
+          "⚠️ No fue posible guardar los cambios.\n\n" +
+          `*Motivo:* ${errorMessage}\n` +
+          `Referencia: \`${cid}\``,
       });
+    } finally {
+      releaseOperationLock(lockKey, body.user.id);
     }
   });
+
+  app.view(
+    { callback_id: "pys_manage_tasks_success", type: "view_closed" },
+    async ({ body, client }) => {
+      const cid = correlationId("tasks-close");
+
+      try {
+        await publishHome(client, body.user.id);
+
+        logger.info(
+          {
+            cid,
+            userId: body.user.id,
+            action: "manage_tasks_closed_home_refreshed",
+          },
+          "Home actualizado al cerrar gestión de tareas",
+        );
+      } catch (err) {
+        logger.warn(
+          {
+            cid,
+            userId: body.user.id,
+            err,
+            action: "manage_tasks_closed_home_refresh_failed",
+          },
+          "No fue posible actualizar Home al cerrar gestión de tareas",
+        );
+      }
+    },
+  );
 }

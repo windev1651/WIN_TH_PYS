@@ -15,10 +15,15 @@ import { getSelectOptionMap } from "../services/slack-list-schema.service.js";
 import type { ProcesoListItem } from "../types/process-read.js";
 import { getAllListItems } from "../services/slack-list-read.service.js";
 
+type ReadOptions = {
+  bypassCache?: boolean;
+};
+
 export async function getProcesos(
   client: WebClient,
+  options: ReadOptions = {},
 ): Promise<ProcesoListItem[]> {
-  const items = await getAllListItems(client, slackLists.procesos.id);
+  const items = await getAllListItems(client, slackLists.procesos.id, options);
   const [tipoSolicitudMap, estadoMap] = await Promise.all([
     getSelectOptionMap(
       client,

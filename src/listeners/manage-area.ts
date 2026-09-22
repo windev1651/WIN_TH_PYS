@@ -1,15 +1,41 @@
 import type { App } from "@slack/bolt";
 
-import {
-  getAreasProceso,
-  getAllAreasProceso,
-} from "../repositories/areas-proceso-read.repository.js";
-import { getProcesos } from "../repositories/procesos-read.repository.js";
-import { getTareasProceso } from "../repositories/tareas-proceso-read.repository.js";
 import { correlationId, logger } from "../utils/logger.js";
-import { buildManageAreaView } from "../views/manage-area.view.js";
-import { approveArea } from "../services/area-management.service.js";
 import { publishHome } from "../services/home-publish.service.js";
+import { loadManageAreaView } from "../services/manage-area-view.service.js";
+import { isUserBusy } from "../services/interaction-lock.service.js";
+
+function buildLoadingAreaView(areaProcesoId: string, cid: string) {
+  return {
+    type: "modal" as const,
+    callback_id: "pys_manage_area_loading",
+
+    private_metadata: JSON.stringify({
+      areaProcesoId,
+      cid,
+    }),
+
+    title: {
+      type: "plain_text" as const,
+      text: "Gestionar área",
+    },
+
+    // close: {
+    //   type: "plain_text" as const,
+    //   text: "Cerrar",
+    // },
+
+    blocks: [
+      {
+        type: "section" as const,
+        text: {
+          type: "mrkdwn" as const,
+          text: "⏳ Cargando información del área...",
+        },
+      },
+    ],
+  };
+}
 
 export function registerManageAreaListeners(app: App): void {
   app.action("pys_manage_area", async ({ ack, action, body, client }) => {
@@ -27,6 +53,20 @@ export function registerManageAreaListeners(app: App): void {
       return;
     }
 
+    if (isUserBusy(body.user.id)) {
+      logger.info(
+        {
+          cid,
+          areaProcesoId,
+          userId: body.user.id,
+          action: "manage_area_ignored_user_busy",
+        },
+        "Gestión de área ignorada porque el usuario tiene una operación en curso",
+      );
+
+      return;
+    }
+
     if (!("trigger_id" in body)) {
       logger.error(
         {
@@ -41,63 +81,24 @@ export function registerManageAreaListeners(app: App): void {
       return;
     }
 
+    /*
+     * Abrimos inmediatamente el modal para consumir
+     * el trigger_id antes de realizar lecturas de Lists.
+     */
+    let viewId: string;
+
     try {
-      const [procesos, todasLasAreas] = await Promise.all([
-        getProcesos(client),
-        getAllAreasProceso(client),
-      ]);
-
-      const targetArea = todasLasAreas.find(
-        (area) => area.areaProcesoId === areaProcesoId,
-      );
-
-      if (!targetArea) {
-        throw new Error(`Área no encontrada: ${areaProcesoId}`);
-      }
-
-      if (targetArea.responsableFuncionalId !== body.user.id) {
-        throw new Error("El usuario no es responsable funcional de esta área");
-      }
-
-      const proceso = procesos.find(
-        (item) => item.procesoId === targetArea.procesoId,
-      );
-
-      if (!proceso) {
-        throw new Error(`Proceso no encontrado: ${targetArea.procesoId}`);
-      }
-
-      const tareas = await getTareasProceso(client, targetArea.procesoId);
-
-      const tareasArea = tareas
-        .filter((tarea) => tarea.areaProcesoId === targetArea.areaProcesoId)
-        .sort((a, b) => a.ordenTarea - b.ordenTarea);
-
-      await client.views.open({
+      const opened = await client.views.open({
         trigger_id: body.trigger_id,
 
-        view: buildManageAreaView(
-          {
-            area: targetArea,
-            empleadoId: proceso.empleadoId,
-            fechaLimite: proceso.fechaLimite,
-            tareas: tareasArea,
-          },
-          cid,
-        ),
+        view: buildLoadingAreaView(areaProcesoId, cid),
       });
 
-      logger.info(
-        {
-          cid,
-          procesoId: targetArea.procesoId,
-          areaProcesoId,
-          userId: body.user.id,
-          tareas: tareasArea.length,
-          action: "manage_area_opened",
-        },
-        "Modal de gestión de área abierto",
-      );
+      if (!opened.view?.id) {
+        throw new Error("Slack no retornó el ID del modal de gestión de área");
+      }
+
+      viewId = opened.view.id;
     } catch (err) {
       logger.error(
         {
@@ -105,83 +106,40 @@ export function registerManageAreaListeners(app: App): void {
           areaProcesoId,
           userId: body.user.id,
           err,
-          action: "manage_area_open_failed",
+          action: "manage_area_loading_open_failed",
         },
-        "Error abriendo gestión de área",
+        "Error abriendo modal de carga de gestión de área",
       );
-    }
-  });
 
-  app.view("pys_manage_area_submit", async ({ ack, body, view, client }) => {
-    const metadata = JSON.parse(view.private_metadata || "{}") as {
-      cid?: string;
-      areaProcesoId?: string;
-    };
-
-    const cid = metadata.cid ?? correlationId("area");
-
-    const areaProcesoId = metadata.areaProcesoId;
-
-    if (!areaProcesoId) {
-      await ack();
       return;
     }
 
-    const commentBlock = view.state.values.approval_comment;
-
-    const comentario = commentBlock?.approval_comment_value?.value ?? "";
-
     /*
-     * Cerramos el modal rápidamente.
-     * La validación real ocurre después.
+     * A partir de aquí ya no dependemos del trigger_id.
+     * Si Lists entra en rate limit, el modal puede esperar
+     * y posteriormente actualizarse mediante view.id.
      */
-    await ack();
-
     try {
-      const result = await approveArea(client, {
+      const manageAreaView = await loadManageAreaView(client, {
         areaProcesoId,
         usuarioId: body.user.id,
-        comentario,
         cid,
       });
 
-      /*
-       * Área aprobada ya no debe aparecer
-       * en "Mis áreas pendientes".
-       */
-      await publishHome(client, body.user.id);
-
-      let mensaje =
-        "✅ *Área aprobada correctamente*\n\n" +
-        `*Área:* ${result.areaNombre}\n` +
-        `*Proceso:* ${result.procesoId}`;
-
-      if (result.comentario) {
-        mensaje += `\n*Comentario:* ${result.comentario}`;
-      }
-
-      if (result.listoParaCierre) {
-        mensaje +=
-          "\n\n✅ *Todas las áreas del proceso están completas.*\n" +
-          "El Paz y Salvo quedó pendiente de cierre por Talento Humano.";
-      }
+      await client.views.update({
+        view_id: viewId,
+        view: manageAreaView,
+      });
 
       logger.info(
         {
           cid,
-          procesoId: result.procesoId,
-          areaProcesoId: result.areaProcesoId,
+          areaProcesoId,
           userId: body.user.id,
-          auditEvent: true,
-          action: "area_approved",
+          action: "manage_area_loaded",
         },
-        "Área aprobada correctamente",
+        "Modal de gestión de área cargado",
       );
-
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: mensaje,
-      });
     } catch (err) {
       logger.error(
         {
@@ -189,22 +147,112 @@ export function registerManageAreaListeners(app: App): void {
           areaProcesoId,
           userId: body.user.id,
           err,
-          action: "area_approval_failed",
+          action: "manage_area_load_failed",
         },
-        "Error aprobando área",
+        "Error cargando gestión de área",
       );
 
-      await client.chat.postMessage({
-        channel: body.user.id,
-
-        text: `No fue posible aprobar el área. Referencia: ${cid}`,
-      });
-
       /*
-       * También refrescamos por si el estado
-       * cambió mientras el modal estaba abierto.
+       * El modal ya existe, por lo que mostramos
+       * el error dentro del propio modal.
        */
-      await publishHome(client, body.user.id);
+      try {
+        await client.views.update({
+          view_id: viewId,
+
+          view: {
+            type: "modal",
+            callback_id: "pys_manage_area_error",
+
+            private_metadata: JSON.stringify({
+              areaProcesoId,
+              cid,
+            }),
+
+            title: {
+              type: "plain_text",
+              text: "Gestionar área",
+            },
+
+            close: {
+              type: "plain_text",
+              text: "Cerrar",
+            },
+
+            blocks: [
+              {
+                type: "section",
+                text: {
+                  type: "mrkdwn",
+                  text:
+                    "⚠️ No fue posible cargar " +
+                    "la información del área.\n\n" +
+                    `Referencia: \`${cid}\``,
+                },
+              },
+            ],
+          },
+        });
+      } catch (updateErr) {
+        logger.error(
+          {
+            cid,
+            areaProcesoId,
+            userId: body.user.id,
+            err: updateErr,
+            action: "manage_area_error_view_failed",
+          },
+          "Error actualizando modal con estado de error",
+        );
+      }
     }
   });
+
+  app.view(
+    {
+      callback_id: "pys_manage_area_submit",
+      type: "view_closed",
+    },
+    async ({ ack, body, client }) => {
+      await ack();
+
+      const cid = correlationId("area-close");
+
+      try {
+        if (isUserBusy(body.user.id)) {
+          logger.info(
+            {
+              cid,
+              userId: body.user.id,
+              action: "manage_area_close_refresh_skipped_user_busy",
+            },
+            "Refresh de Home omitido porque el usuario tiene una operación en curso",
+          );
+
+          return;
+        }
+
+        await publishHome(client, body.user.id);
+
+        logger.info(
+          {
+            cid,
+            userId: body.user.id,
+            action: "manage_area_closed_home_refreshed",
+          },
+          "Home actualizado al cerrar gestión de área",
+        );
+      } catch (err) {
+        logger.error(
+          {
+            cid,
+            userId: body.user.id,
+            err,
+            action: "manage_area_closed_home_refresh_failed",
+          },
+          "Error actualizando Home al cerrar gestión de área",
+        );
+      }
+    },
+  );
 }

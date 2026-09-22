@@ -1,4 +1,5 @@
 import type { App } from "@slack/bolt";
+import type { View } from "@slack/types";
 
 import { getProcessDetail } from "../services/process-detail.service.js";
 import { correlationId, logger } from "../utils/logger.js";
@@ -6,8 +7,43 @@ import {
   buildLoadingProcessDetailView,
   buildProcessDetailView,
 } from "../views/process-detail.view.js";
-
 import { canAdministerPys } from "../services/authorization.service.js";
+
+function buildProcessDetailErrorView(procesoId: string, cid: string): View {
+  return {
+    type: "modal",
+
+    callback_id: "pys_process_detail_error",
+
+    private_metadata: JSON.stringify({
+      procesoId,
+      cid,
+    }),
+
+    title: {
+      type: "plain_text",
+      text: "Detalle Paz y Salvo",
+    },
+
+    close: {
+      type: "plain_text",
+      text: "Cerrar",
+    },
+
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "⚠️ *No fue posible cargar el detalle del proceso.*\n\n" +
+            `Proceso: *${procesoId}*\n` +
+            `Referencia: \`${cid}\``,
+        },
+      },
+    ],
+  };
+}
 
 export function registerProcessDetailListeners(app: App): void {
   app.action("pys_view_process", async ({ ack, action, body, client }) => {
@@ -30,6 +66,7 @@ export function registerProcessDetailListeners(app: App): void {
         {
           cid,
           procesoId,
+          userId: body.user.id,
           action: "open_process_detail",
         },
         "Interacción sin trigger_id",
@@ -42,9 +79,10 @@ export function registerProcessDetailListeners(app: App): void {
 
     try {
       /*
-       * Abrimos inmediatamente el modal
-       * para consumir el trigger_id antes
-       * de realizar lecturas de Slack Lists.
+       * Consumimos el trigger_id inmediatamente.
+       *
+       * Ninguna lectura de Lists debe ocurrir
+       * antes de este views.open().
        */
       const openResult = await client.views.open({
         trigger_id: body.trigger_id,
@@ -54,23 +92,18 @@ export function registerProcessDetailListeners(app: App): void {
 
       openedViewId = openResult.view?.id;
 
-      //const viewId = openResult.view?.id;
-
       if (!openedViewId) {
-        throw new Error("Slack no retornó el ID de la vista de detalle");
+        throw new Error("Slack no retornó el ID del modal de detalle");
       }
 
       /*
-       * Una vez abierto el modal,
-       * cargamos la información real.
+       * Ahora sí cargamos toda la información.
        *
-       * Si Slack Lists entra en retry,
-       * el modal ya existe y no dependemos
-       * del trigger_id.
+       * Si Slack Lists entra en rate limit,
+       * el usuario ya tiene un modal abierto.
        */
       const [detail, puedeAdministrar] = await Promise.all([
         getProcessDetail(client, procesoId),
-
         canAdministerPys(client, body.user.id),
       ]);
 
@@ -94,6 +127,17 @@ export function registerProcessDetailListeners(app: App): void {
         "Detalle de Paz y Salvo abierto",
       );
     } catch (err) {
+      logger.error(
+        {
+          cid,
+          procesoId,
+          userId: body.user.id,
+          err,
+          action: "process_detail_failed",
+        },
+        "Error cargando detalle de Paz y Salvo",
+      );
+
       if (openedViewId) {
         try {
           await client.views.update({
@@ -120,7 +164,7 @@ export function registerProcessDetailListeners(app: App): void {
                   text: {
                     type: "mrkdwn",
                     text:
-                      "⚠️ No fue posible cargar el detalle del proceso.\n\n" +
+                      "⚠️ *No fue posible cargar el detalle del Paz y Salvo.*\n\n" +
                       `Referencia: \`${cid}\``,
                   },
                 },
@@ -128,27 +172,18 @@ export function registerProcessDetailListeners(app: App): void {
             },
           });
         } catch (updateErr) {
-          logger.error(
+          logger.warn(
             {
               cid,
               procesoId,
-              updateErr,
+              userId: body.user.id,
+              err: updateErr,
               action: "process_detail_error_view_failed",
             },
             "No fue posible actualizar el modal con el error",
           );
         }
       }
-      logger.error(
-        {
-          cid,
-          procesoId,
-          userId: body.user.id,
-          err,
-          action: "process_detail_failed",
-        },
-        "Error abriendo detalle de Paz y Salvo",
-      );
     }
   });
 }

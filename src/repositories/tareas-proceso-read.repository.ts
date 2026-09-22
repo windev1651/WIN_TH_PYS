@@ -14,116 +14,22 @@ import {
   getUserField,
   type SlackListItem,
 } from "./list-helpers.js";
+import { TASK_STATUS } from "../constants/status.js";
 
-// export async function getTareasProceso(
-//   client: WebClient,
-//   procesoId: string,
-// ): Promise<TareaProcesoDetail[]> {
-//   const response = await client.apiCall("slackLists.items.list", {
-//     list_id: slackLists.tareasProceso.id,
-//     limit: 100,
-//   });
+type ReadOptions = {
+  bypassCache?: boolean;
+};
 
-//   const items =
-//     (
-//       response as {
-//         items?: SlackListItem[];
-//       }
-//     ).items ?? [];
-
-//   const estadoMap = await getSelectOptionMap(
-//     client,
-//     slackLists.tareasProceso.id,
-//     slackColumns.tareasProceso.estado,
-//   );
-
-//   return items
-//     .map((item): TareaProcesoDetail | null => {
-//       const rowProcesoId = getTextField(
-//         item,
-//         slackColumns.tareasProceso.procesoId,
-//       );
-
-//       if (!item.id || rowProcesoId !== procesoId) {
-//         return null;
-//       }
-
-//       const taskId = getTextField(item, slackColumns.tareasProceso.taskId);
-
-//       const areaProcesoId = getTextField(
-//         item,
-//         slackColumns.tareasProceso.areaProcesoId,
-//       );
-
-//       const tarea = getTextField(
-//         item,
-//         slackColumns.tareasProceso.tareaSnapshot,
-//       );
-
-//       const responsableOperativoId = getUserField(
-//         item,
-//         slackColumns.tareasProceso.responsableOperativoSnapshot,
-//       );
-
-//       const estadoOptionId = getSelectField(
-//         item,
-//         slackColumns.tareasProceso.estado,
-//       );
-
-//       const estado = estadoOptionId ? estadoMap.get(estadoOptionId) : null;
-
-//       if (
-//         !taskId ||
-//         !areaProcesoId ||
-//         !tarea ||
-//         !responsableOperativoId ||
-//         !estado
-//       ) {
-//         return null;
-//       }
-
-//       return {
-//         slackItemId: item.id,
-//         taskId,
-//         procesoId,
-//         areaProcesoId,
-
-//         configTareaIdOrigen:
-//           getTextField(item, slackColumns.tareasProceso.configTareaIdOrigen) ??
-//           "",
-
-//         tarea,
-//         responsableOperativoId,
-
-//         obligatoria: getCheckboxField(
-//           item,
-//           slackColumns.tareasProceso.obligatoria,
-//         ),
-
-//         requiereEvidencia: getCheckboxField(
-//           item,
-//           slackColumns.tareasProceso.requiereEvidencia,
-//         ),
-
-//         estado,
-
-//         fechaLimite:
-//           getDateField(item, slackColumns.tareasProceso.fechaLimite) ?? "",
-
-//         comentario: getTextField(item, slackColumns.tareasProceso.comentario),
-
-//         ordenTarea:
-//           getNumberField(item, slackColumns.tareasProceso.ordenTarea) ?? 0,
-//       };
-//     })
-//     .filter((item): item is TareaProcesoDetail => item !== null)
-//     .sort((a, b) => a.ordenTarea - b.ordenTarea);
-// }
 export async function getTareasProceso(
   client: WebClient,
   procesoId: string,
+  options: ReadOptions = {},
 ): Promise<TareaProcesoDetail[]> {
-  const items = await getAllListItems(client, slackLists.tareasProceso.id);
+  const items = await getAllListItems(
+    client,
+    slackLists.tareasProceso.id,
+    options,
+  );
 
   const tareas = await parseTareas(client, items);
 
@@ -140,21 +46,15 @@ export async function getTareasUsuario(
 
   const tareas = await parseTareas(client, items);
 
-  // console.log("DEBUG getTareasUsuario", {
-  //   userId,
-  //   totalTareas: tareas.length,
-  //   responsables: tareas.map((tarea) => ({
-  //     taskId: tarea.taskId,
-  //     responsable: tarea.responsableOperativoId,
-  //     estado: tarea.estado,
-  //   })),
-  // });
-
   const tareasUsuario = tareas
     .filter(
       (tarea) =>
         tarea.responsableOperativoId === userId &&
-        !["Completada", "No aplica"].includes(tarea.estado),
+        ![
+          TASK_STATUS.COMPLETED,
+          TASK_STATUS.NOT_APPLICABLE,
+          TASK_STATUS.PENDING_APPROVAL,
+        ].some((status) => status === tarea.estado),
     )
     .sort((a, b) => {
       if (a.fechaLimite !== b.fechaLimite) {
@@ -280,6 +180,10 @@ async function parseTareas(
           getDateField(item, slackColumns.tareasProceso.fechaLimite) ?? "",
 
         comentario: getTextField(item, slackColumns.tareasProceso.comentario),
+        comentarioRechazo: getTextField(
+          item,
+          slackColumns.tareasProceso.comentarioRechazo,
+        ),
 
         ordenTarea:
           getNumberField(item, slackColumns.tareasProceso.ordenTarea) ?? 0,

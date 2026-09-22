@@ -9,6 +9,7 @@ import { registerProcessCloseListeners } from "./listeners/process-close.js";
 import { registerTaskReassignmentListeners } from "./listeners/task-reassignement.js";
 import { registerFunctionalReassignmentListeners } from "./listeners/functional-reassignment.js";
 import { registerManageResponsiblesListeners } from "./listeners/manage-responsibles.js";
+import { registerTaskReviewListeners } from "./listeners/task-review.js";
 
 import { registerSchedulers } from "./scheduler.js";
 
@@ -47,6 +48,7 @@ registerProcessCloseListeners(app);
 registerTaskReassignmentListeners(app);
 registerFunctionalReassignmentListeners(app);
 registerManageResponsiblesListeners(app);
+registerTaskReviewListeners(app);
 
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, "Apagando TH_PYS");

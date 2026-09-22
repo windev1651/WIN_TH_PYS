@@ -101,6 +101,7 @@ export const slackColumns = {
     ordenTarea: "Col0BQBKA36CE",
     dmChannelId: "Col0BQH8T4P36",
     dmMessageTs: "Col0BQFGGA63T",
+    comentarioRechazo: "Col0C1ZPQ0FAS",
   },
 
   evidencias: {

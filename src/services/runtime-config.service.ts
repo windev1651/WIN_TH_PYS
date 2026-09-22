@@ -51,3 +51,25 @@ export async function getSchedulerTimezone(client: WebClient): Promise<string> {
 
   return parametro?.valor?.trim() || "America/Bogota";
 }
+
+export async function getMaxTamanoEvidenciaMB(
+  client: WebClient,
+): Promise<number> {
+  const parametros = await getParametros(client);
+
+  const parametro = parametros.find(
+    (item) => item.clave === "MaxTamanoEvidenciaMB" && item.activo,
+  );
+
+  if (!parametro) {
+    return 5;
+  }
+
+  const value = Number(parametro.valor);
+
+  if (!Number.isFinite(value) || value <= 0) {
+    return 5;
+  }
+
+  return value;
+}

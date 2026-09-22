@@ -1,18 +1,18 @@
 import type { WebClient } from "@slack/web-api";
 
 import { createAuditEvent } from "../repositories/auditoria.repository.js";
-import { updateAreaEstado } from "../repositories/areas-proceso.repository.js";
 import { getAreasProceso } from "../repositories/areas-proceso-read.repository.js";
 import { getProcesos } from "../repositories/procesos-read.repository.js";
-import { updateProcesoAvance } from "../repositories/procesos.repository.js";
 import { getTareasProceso } from "../repositories/tareas-proceso-read.repository.js";
 import { updateTareaEstado } from "../repositories/tareas-proceso.repository.js";
-import { eventId } from "../utils/entity-id.js";
-
+import { updateProgressAfterTaskManagement } from "./task-progress.service.js";
 import {
-  approveArea,
+  reconcileAreaCompletion,
   shouldAutoApproveArea,
 } from "./area-management.service.js";
+
+import { eventId } from "../utils/entity-id.js";
+import { TASK_STATUS } from "../constants/status.js";
 
 type CompleteTaskInput = {
   procesoId: string;
@@ -63,7 +63,17 @@ export async function completeTask(
     throw new Error("El usuario no es responsable de esta tarea");
   }
 
-  if (tarea.estado === "Completada") {
+  const comentario = input.comentario?.trim();
+
+  if (!comentario) {
+    throw new Error("El comentario de la tarea es obligatorio");
+  }
+
+  if (
+    [TASK_STATUS.PENDING_APPROVAL, TASK_STATUS.COMPLETED].some(
+      (status) => status === tarea.estado,
+    )
+  ) {
     return {
       procesoId: input.procesoId,
       taskId: tarea.taskId,
@@ -76,13 +86,31 @@ export async function completeTask(
     };
   }
   if (tarea.requiereEvidencia) {
-    throw new Error("La tarea requiere evidencia antes de completarse");
+    throw new Error(
+      "La tarea requiere evidencia antes de enviarse a aprobación",
+    );
   }
+
+  const area = areas.find((item) => item.areaProcesoId === tarea.areaProcesoId);
+
+  if (!area) {
+    throw new Error(`Área del proceso no encontrada: ${tarea.areaProcesoId}`);
+  }
+
+  const tareasArea = tareas.filter(
+    (item) => item.areaProcesoId === area.areaProcesoId,
+  );
+
+  const autoAprobacion = shouldAutoApproveArea(area, tareasArea);
+
+  const nuevoEstado = autoAprobacion
+    ? TASK_STATUS.COMPLETED
+    : TASK_STATUS.PENDING_APPROVAL;
 
   await updateTareaEstado(
     client,
     tarea.slackItemId,
-    "Completada",
+    nuevoEstado,
     input.usuarioId,
     input.comentario,
   );
@@ -93,100 +121,66 @@ export async function completeTask(
     procesoId: input.procesoId,
     entidadTipo: "Tarea",
     entidadId: tarea.taskId,
-    accion: "COMPLETAR_TAREA",
+
+    accion: autoAprobacion ? "AUTOAPROBAR_TAREA" : "ENVIAR_TAREA_APROBACION",
+
     usuarioId: input.usuarioId,
     fechaHoraUtc: new Date().toISOString(),
     estadoAnterior: tarea.estado,
-    estadoNuevo: "Completada",
-    detalle: input.comentario?.trim()
-      ? input.comentario.trim()
-      : "Tarea completada",
+    estadoNuevo: nuevoEstado,
+
+    detalle: autoAprobacion
+      ? `Tarea autoaprobada: ${tarea.tarea}. ${comentario}`
+      : comentario,
   });
 
   const tareasActualizadas = tareas.map((item) =>
     item.taskId === tarea.taskId
       ? {
           ...item,
-          estado: "Completada",
+          estado: nuevoEstado,
         }
       : item,
   );
 
-  const area = areas.find((item) => item.areaProcesoId === tarea.areaProcesoId);
+  /*
+   * Primero actualizamos avance operativo.
+   *
+   * Si el área estaba Pendiente, aquí puede pasar
+   * a En progreso.
+   *
+   * Esto debe ocurrir ANTES de reconciliar el cierre,
+   * para no sobrescribir posteriormente un estado
+   * Completada.
+   */
+  await updateProgressAfterTaskManagement(client, {
+    procesoSlackItemId: proceso.slackItemId,
+    area,
+    tareas: tareasActualizadas,
+  });
 
-  if (!area) {
-    throw new Error(`Área del proceso no encontrada: ${tarea.areaProcesoId}`);
+  let listoParaCierre = false;
+  let areaAutoAprobada = false;
+
+  if (autoAprobacion) {
+    const reconciliation = await reconcileAreaCompletion(client, {
+      procesoId: input.procesoId,
+      areaProcesoId: area.areaProcesoId,
+      usuarioId: input.usuarioId,
+      cid: input.cid,
+    });
+
+    areaAutoAprobada = reconciliation.completed;
+    listoParaCierre = reconciliation.listoParaCierre;
   }
 
-  const tareasArea = tareasActualizadas.filter(
-    (item) => item.areaProcesoId === area.areaProcesoId,
-  );
-
-  const obligatoriasCompletas = tareasArea
-    .filter((item) => item.obligatoria)
-    .every(
-      (item) => item.estado === "Completada" || item.estado === "No aplica",
-    );
-
-  const autoAprobacion =
-    obligatoriasCompletas && shouldAutoApproveArea(area, tareasArea);
-
-  let autoApprovalResult: Awaited<ReturnType<typeof approveArea>> | null = null;
-
-  if (obligatoriasCompletas) {
-    if (autoAprobacion) {
-      /*
-       * approveArea vuelve a consultar
-       * las tareas desde Slack.
-       *
-       * Primero dejamos el área en
-       * Lista para aprobación para
-       * mantener una transición
-       * consistente.
-       */
-      if (area.estado !== "Lista para aprobación") {
-        await updateAreaEstado(
-          client,
-          area.slackItemId,
-          "Lista para aprobación",
-        );
-      }
-
-      autoApprovalResult = await approveArea(client, {
-        areaProcesoId: area.areaProcesoId,
-        usuarioId: input.usuarioId,
-        comentario: "Aprobación automática",
-        cid: input.cid,
-        origen: "automatica",
-      });
-    } else if (area.estado !== "Lista para aprobación") {
-      await updateAreaEstado(client, area.slackItemId, "Lista para aprobación");
-    }
-  } else if (area.estado === "Pendiente") {
-    await updateAreaEstado(client, area.slackItemId, "En progreso");
-  }
-
-  const tareasComputables = tareasActualizadas.filter(
-    (item) => item.obligatoria && item.estado !== "No aplica",
-  );
-
-  const completadas = tareasComputables.filter(
-    (item) => item.estado === "Completada",
-  ).length;
-
-  const porcentajeAvance =
-    tareasComputables.length === 0
-      ? 0
-      : Math.round((completadas / tareasComputables.length) * 100);
-
-  await updateProcesoAvance(client, proceso.slackItemId, porcentajeAvance);
   return {
     procesoId: input.procesoId,
     taskId: tarea.taskId,
     tarea: tarea.tarea,
-    comentario: input.comentario?.trim() ? input.comentario.trim() : null,
-    autoAprobacion,
-    listoParaCierre: autoApprovalResult?.listoParaCierre ?? false,
+    comentario,
+    autoAprobacion: areaAutoAprobada,
+    listoParaCierre,
     areaProcesoId: area.areaProcesoId,
     areaNombre: area.areaNombre,
   };

@@ -2,6 +2,10 @@ import type { App } from "@slack/bolt";
 
 import { correlationId, logger } from "../utils/logger.js";
 import { publishHome } from "../services/home-publish.service.js";
+import {
+  releaseOperationLock,
+  tryAcquireOperationLock,
+} from "../services/interaction-lock.service.js";
 
 export function registerAppHomeListeners(app: App): void {
   const recentHomeOpens = new Map<string, number>();
@@ -56,6 +60,55 @@ export function registerAppHomeListeners(app: App): void {
         },
         "Error publicando App Home",
       );
+    }
+  });
+
+  app.action("pys_refresh_home", async ({ ack, body, client }) => {
+    await ack();
+
+    const cid = correlationId("home-refresh");
+    const userId = body.user.id;
+
+    const lockKey = `home-refresh:${userId}`;
+
+    const lockAcquired = tryAcquireOperationLock(lockKey, userId);
+
+    if (!lockAcquired) {
+      logger.info(
+        {
+          cid,
+          userId,
+          action: "home_refresh_ignored_busy",
+        },
+        "Actualización de Home ignorada porque el usuario tiene una operación en curso",
+      );
+
+      return;
+    }
+
+    try {
+      await publishHome(client, userId);
+
+      logger.info(
+        {
+          cid,
+          userId,
+          action: "home_refreshed_manually",
+        },
+        "Home actualizado manualmente",
+      );
+    } catch (err) {
+      logger.error(
+        {
+          cid,
+          userId,
+          err,
+          action: "home_manual_refresh_failed",
+        },
+        "Error actualizando Home manualmente",
+      );
+    } finally {
+      releaseOperationLock(lockKey, userId);
     }
   });
 }

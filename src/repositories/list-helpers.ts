@@ -11,9 +11,34 @@ export type SlackListField = {
   value?: unknown;
 };
 
+type SlackListItemField = {
+  column_id?: string;
+
+  rich_text?: Array<{
+    type?: string;
+    elements?: unknown[];
+  }>;
+
+  number?: number[];
+  date?: string[];
+  user?: string[];
+  checkbox?: boolean;
+  select?: string[];
+
+  link?: Array<{
+    originalUrl?: string;
+    displayAsUrl?: boolean;
+    displayName?: string;
+
+    original_url?: string;
+    display_as_url?: boolean;
+    display_name?: string;
+  }>;
+};
+
 export type SlackListItem = {
   id?: string;
-  fields?: SlackListField[];
+  fields?: SlackListItemField[];
 };
 
 function getField(
@@ -87,4 +112,19 @@ export function getSelectField(
   const field = getField(item, columnId);
 
   return field?.select?.[0] ?? null;
+}
+
+export function getLinkField(
+  item: SlackListItem,
+  columnId: string,
+): string | null {
+  const field = item.fields?.find((current) => current.column_id === columnId);
+
+  const link = field?.link?.[0];
+
+  if (!link) {
+    return null;
+  }
+
+  return link.originalUrl ?? link.original_url ?? null;
 }

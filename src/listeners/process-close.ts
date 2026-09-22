@@ -7,6 +7,36 @@ import { getProcesos } from "../repositories/procesos-read.repository.js";
 import { correlationId, logger } from "../utils/logger.js";
 import { buildCloseProcessView } from "../views/close-process.view.js";
 
+function buildLoadingCloseProcessView(procesoId: string, cid: string) {
+  return {
+    type: "modal" as const,
+
+    callback_id: "pys_close_process_loading",
+
+    private_metadata: JSON.stringify({
+      procesoId,
+      cid,
+    }),
+
+    title: {
+      type: "plain_text" as const,
+      text: "Cerrar Paz y Salvo",
+    },
+
+    blocks: [
+      {
+        type: "section" as const,
+        text: {
+          type: "mrkdwn" as const,
+          text:
+            "⏳ *Cargando información del proceso...*\n\n" +
+            "Espera mientras validamos el Paz y Salvo.",
+        },
+      },
+    ],
+  };
+}
+
 export function registerProcessCloseListeners(app: App): void {
   app.action("pys_close_process", async ({ ack, action, body, client }) => {
     await ack();
@@ -37,7 +67,29 @@ export function registerProcessCloseListeners(app: App): void {
       return;
     }
 
+    let openedViewId: string | undefined;
+
     try {
+      /*
+       * Consumimos inmediatamente el trigger_id.
+       * No hacemos lecturas de Lists antes.
+       */
+      const openResult = await client.views.open({
+        trigger_id: body.trigger_id,
+
+        view: buildLoadingCloseProcessView(procesoId, cid),
+      });
+
+      openedViewId = openResult.view?.id;
+
+      if (!openedViewId) {
+        throw new Error("Slack no retornó el ID del modal de cierre");
+      }
+
+      /*
+       * Ahora sí hacemos las validaciones
+       * y lecturas necesarias.
+       */
       const autorizado = await canAdministerPys(client, body.user.id);
 
       if (!autorizado) {
@@ -58,8 +110,8 @@ export function registerProcessCloseListeners(app: App): void {
         );
       }
 
-      await client.views.open({
-        trigger_id: body.trigger_id,
+      await client.views.update({
+        view_id: openedViewId,
 
         view: buildCloseProcessView(proceso.procesoId, proceso.empleadoId, cid),
       });
@@ -85,10 +137,58 @@ export function registerProcessCloseListeners(app: App): void {
         "Error abriendo modal de cierre",
       );
 
+      if (openedViewId) {
+        try {
+          await client.views.update({
+            view_id: openedViewId,
+
+            view: {
+              type: "modal",
+
+              callback_id: "pys_close_process_error",
+
+              title: {
+                type: "plain_text",
+                text: "Cerrar Paz y Salvo",
+              },
+
+              close: {
+                type: "plain_text",
+                text: "Cerrar",
+              },
+
+              blocks: [
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text:
+                      "⚠️ *No fue posible cargar el cierre del proceso.*\n\n" +
+                      `Referencia: \`${cid}\``,
+                  },
+                },
+              ],
+            },
+          });
+        } catch (uiErr) {
+          logger.warn(
+            {
+              cid,
+              procesoId,
+              userId: body.user.id,
+              err: uiErr,
+              action: "close_process_error_view_failed",
+            },
+            "No fue posible actualizar el modal de cierre con el error",
+          );
+        }
+      }
+
       await client.chat.postMessage({
         channel: body.user.id,
 
-        text: `No fue posible abrir el cierre del proceso. Referencia: ${cid}`,
+        text:
+          "No fue posible abrir el cierre del proceso. " + `Referencia: ${cid}`,
       });
     }
   });

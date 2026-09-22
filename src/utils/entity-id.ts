@@ -19,3 +19,7 @@ export function taskId(): string {
 export function eventId(): string {
   return `EVT-${shortId()}`;
 }
+
+export function evidenceId(): string {
+  return `EVD-${shortId()}`;
+}

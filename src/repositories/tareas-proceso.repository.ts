@@ -14,6 +14,7 @@ import {
 } from "../services/slack-list-write.service.js";
 import { getSelectOptionId } from "../services/slack-list-schema.service.js";
 import { updateListItem } from "../services/slack-list-write.service.js";
+import { TASK_STATUS } from "../constants/status.js";
 
 export async function createTareaProceso(
   client: WebClient,
@@ -78,7 +79,7 @@ export async function updateTareaEstado(
     fields.push(textCell(slackColumns.tareasProceso.comentario, comentario));
   }
 
-  if (estado === "Completada") {
+  if (estado === TASK_STATUS.COMPLETED) {
     const fechaCompletado = new Intl.DateTimeFormat("en-CA", {
       timeZone: "America/Bogota",
       year: "numeric",
@@ -110,6 +111,58 @@ export async function updateTareaResponsable(
     userCell(
       slackColumns.tareasProceso.responsableOperativoSnapshot,
       nuevoResponsableId,
+    ),
+  ]);
+}
+
+export async function updateTareaEstadoEvidencia(
+  client: WebClient,
+  slackItemId: string,
+  estado: string,
+  comentario?: string,
+): Promise<void> {
+  const estadoOptionId = await getSelectOptionId(
+    client,
+    slackLists.tareasProceso.id,
+    slackColumns.tareasProceso.estado,
+    estado,
+  );
+
+  const fields = [
+    selectCell(slackColumns.tareasProceso.estado, estadoOptionId),
+  ];
+
+  if (comentario && comentario.trim() !== "") {
+    fields.push(
+      textCell(slackColumns.tareasProceso.comentario, comentario.trim()),
+    );
+  }
+
+  await updateListItem(
+    client,
+    slackLists.tareasProceso.id,
+    slackItemId,
+    fields,
+  );
+}
+
+export async function returnTaskToPending(
+  client: WebClient,
+  slackItemId: string,
+  comentarioRechazo: string,
+): Promise<void> {
+  const estadoOptionId = await getSelectOptionId(
+    client,
+    slackLists.tareasProceso.id,
+    slackColumns.tareasProceso.estado,
+    TASK_STATUS.PENDING,
+  );
+
+  await updateListItem(client, slackLists.tareasProceso.id, slackItemId, [
+    selectCell(slackColumns.tareasProceso.estado, estadoOptionId),
+    textCell(
+      slackColumns.tareasProceso.comentarioRechazo,
+      comentarioRechazo.trim(),
     ),
   ]);
 }

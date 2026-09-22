@@ -13,7 +13,9 @@ coverage/
 # Logs
 *.log
 npm-debug.log*
+logs/
 
 # OS
 .DS_Store
 Thumbs.db
+

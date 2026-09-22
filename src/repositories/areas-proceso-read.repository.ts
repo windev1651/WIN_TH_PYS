@@ -14,6 +14,10 @@ import {
   type SlackListItem,
 } from "./list-helpers.js";
 
+type ReadOptions = {
+  bypassCache?: boolean;
+};
+
 export async function getAllAreasProceso(
   client: WebClient,
 ): Promise<AreaProcesoDetail[]> {
@@ -25,8 +29,13 @@ export async function getAllAreasProceso(
 export async function getAreasProceso(
   client: WebClient,
   procesoId: string,
+  options: ReadOptions = {},
 ): Promise<AreaProcesoDetail[]> {
-  const items = await getAllListItems(client, slackLists.areasProceso.id);
+  const items = await getAllListItems(
+    client,
+    slackLists.areasProceso.id,
+    options,
+  );
 
   const areas = await parseAreasProceso(client, items);
 

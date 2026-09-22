@@ -126,3 +126,20 @@ export async function updateListItem(
     cells,
   });
 }
+
+export function linkCell(
+  columnId: string,
+  url: string,
+  displayName?: string,
+): SlackListItemField {
+  return {
+    column_id: columnId,
+    link: [
+      {
+        original_url: url,
+        display_as_url: true,
+        display_name: displayName ?? url,
+      },
+    ],
+  };
+}

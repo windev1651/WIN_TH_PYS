@@ -43,6 +43,19 @@ export function buildHomeBlocks(
         text: "Paz y Salvo · Talento Humano",
       },
     },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "🔄 Actualizar",
+          },
+          action_id: "pys_refresh_home",
+        },
+      ],
+    },
   ];
 
   if (permisos.puedeAdministrarPys) {

@@ -27,6 +27,7 @@ export type TareaProcesoDetail = {
   fechaLimite: string;
   comentario: string | null;
   ordenTarea: number;
+  comentarioRechazo: string | null;
 };
 
 export type ProcessDetail = {

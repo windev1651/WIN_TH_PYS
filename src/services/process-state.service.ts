@@ -1,4 +1,5 @@
 import type { WebClient } from "@slack/web-api";
+import type { AreaProcesoDetail } from "../types/process-detail.js";
 
 import { createAuditEvent } from "../repositories/auditoria.repository.js";
 import { getAreasProceso } from "../repositories/areas-proceso-read.repository.js";
@@ -6,10 +7,23 @@ import { getProcesos } from "../repositories/procesos-read.repository.js";
 import { updateProcesoEstado } from "../repositories/procesos.repository.js";
 import { eventId } from "../utils/entity-id.js";
 
+import {
+  AREA_STATUS,
+  CLOSED_PROCESS_STATUSES,
+  PROCESS_STATUS,
+} from "../constants/status.js";
+
+type ProcesoSnapshot = Awaited<ReturnType<typeof getProcesos>>[number];
+
+type AreaSnapshot = Awaited<ReturnType<typeof getAreasProceso>>[number];
+
 type RecalculateProcessStateInput = {
   procesoId: string;
   usuarioId: string;
   cid: string;
+
+  proceso?: ProcesoSnapshot;
+  areas?: AreaSnapshot[];
 };
 
 export type RecalculateProcessStateResult = {
@@ -24,12 +38,19 @@ export async function recalculateProcessState(
   client: WebClient,
   input: RecalculateProcessStateInput,
 ): Promise<RecalculateProcessStateResult> {
-  const [procesos, areas] = await Promise.all([
-    getProcesos(client),
-    getAreasProceso(client, input.procesoId),
-  ]);
+  const procesosPromise = getProcesos(client);
 
-  const proceso = procesos.find((item) => item.procesoId === input.procesoId);
+  const areasPromise = input.areas
+    ? Promise.resolve(input.areas)
+    : getAreasProceso(client, input.procesoId);
+
+  const proceso =
+    input.proceso ??
+    (await getProcesos(client)).find(
+      (item) => item.procesoId === input.procesoId,
+    );
+
+  const areas = input.areas ?? (await getAreasProceso(client, input.procesoId));
 
   if (!proceso) {
     throw new Error(`Proceso no encontrado: ${input.procesoId}`);
@@ -40,24 +61,24 @@ export async function recalculateProcessState(
   }
 
   const todasLasAreasCompletadas = areas.every(
-    (area) => area.estado === "Completada",
+    (area) => area.estado === AREA_STATUS.COMPLETED,
   );
 
   const estadoNuevo = todasLasAreasCompletadas
-    ? "Pendiente de aprobación"
-    : "En ejecución";
+    ? PROCESS_STATUS.PENDING_APPROVAL
+    : PROCESS_STATUS.IN_PROGRESS;
 
   /*
    * No devolvemos un proceso Finalizado
    * nuevamente a En ejecución.
    */
-  if (proceso.estado === "Finalizado" || proceso.estado === "Cancelado") {
+  if (CLOSED_PROCESS_STATUSES.some((status) => status === proceso.estado)) {
     return {
       procesoId: proceso.procesoId,
       estadoAnterior: proceso.estado,
       estadoNuevo: proceso.estado,
       cambioEstado: false,
-      listoParaCierre: proceso.estado === "Finalizado",
+      listoParaCierre: proceso.estado === PROCESS_STATUS.COMPLETED,
     };
   }
 

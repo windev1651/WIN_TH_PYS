@@ -5,6 +5,7 @@ import { getTiposSolicitud } from "../repositories/tipos-solicitud.repository.js
 import { correlationId, logger } from "../utils/logger.js";
 import { createPazYSalvo } from "../services/process-create.service.js";
 import { notifyProcessCreated } from "../services/notification.service.js";
+import { publishHome } from "../services/home-publish.service.js";
 
 import { getCachedValue } from "../services/reference-data-cache.service.js";
 import {
@@ -242,6 +243,18 @@ export function registerProcessCreateListeners(app: App): void {
         directMessage,
         channelMessage,
       });
+
+      await publishHome(client, body.user.id);
+
+      logger.info(
+        {
+          cid,
+          procesoId: result.proceso.procesoId,
+          userId: body.user.id,
+          action: "process_created_home_refreshed",
+        },
+        "Home actualizado después de crear Paz y Salvo",
+      );
 
       logger.info(
         {

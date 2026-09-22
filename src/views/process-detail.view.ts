@@ -1,6 +1,11 @@
 import type { KnownBlock, View } from "@slack/types";
 
 import type { ProcessDetail } from "../types/process-detail.js";
+import {
+  AREA_STATUS,
+  CLOSED_PROCESS_STATUSES,
+  TASK_STATUS,
+} from "../constants/status.js";
 
 type ProcessDetailViewOptions = {
   puedeAdministrar: boolean;
@@ -9,17 +14,13 @@ type ProcessDetailViewOptions = {
 
 function taskEmoji(estado: string): string {
   switch (estado) {
-    case "Completada":
+    case TASK_STATUS.COMPLETED:
       return "✅";
 
-    case "Rechazada":
-      return "🔴";
-
-    case "Pendiente de evidencia":
-    case "Pendiente aprobación evidencia":
+    case TASK_STATUS.PENDING_APPROVAL:
       return "🟡";
 
-    case "No aplica":
+    case TASK_STATUS.NOT_APPLICABLE:
       return "➖";
 
     default:
@@ -82,11 +83,9 @@ export function buildProcessDetailView(
   }
 
   for (const area of detail.areas) {
-    const procesoEditable = ![
-      "Finalizado",
-      "Finalizado con excepción",
-      "Cancelado",
-    ].includes(detail.estado);
+    const procesoEditable = !CLOSED_PROCESS_STATUSES.some(
+      (status) => status === detail.estado,
+    );
 
     blocks.push({
       type: "header",
@@ -109,7 +108,7 @@ export function buildProcessDetailView(
     if (
       options.puedeAdministrar &&
       procesoEditable &&
-      area.estado !== "Completada"
+      area.estado !== AREA_STATUS.COMPLETED
     ) {
       blocks.push({
         type: "actions",
@@ -145,7 +144,9 @@ export function buildProcessDetailView(
 
         ...(options.puedeAdministrar &&
         procesoEditable &&
-        !["Completada", "No aplica"].includes(tarea.estado)
+        ![TASK_STATUS.COMPLETED, TASK_STATUS.NOT_APPLICABLE].some(
+          (status) => status === tarea.estado,
+        )
           ? {
               accessory: {
                 type: "button" as const,
@@ -212,11 +213,6 @@ export function buildLoadingProcessDetailView(procesoId: string): View {
     title: {
       type: "plain_text",
       text: "Detalle Paz y Salvo",
-    },
-
-    close: {
-      type: "plain_text",
-      text: "Cerrar",
     },
 
     blocks: [

@@ -23,7 +23,7 @@ export const slackLists = {
     id: "F0BPY5HLAR5",
   },
   festivos: {
-    name: "TH_Vacaciones_Festivos",
+    name: "TH_Festivos",
     id: "F0AV3P6P6DB",
   },
   procesos: {
