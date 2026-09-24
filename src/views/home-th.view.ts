@@ -98,6 +98,14 @@ export function buildHomeBlocks(
             },
             action_id: "pys_manage_responsibles",
           },
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Consultar histórico",
+            },
+            action_id: "pys_open_history",
+          },
         ],
       },
       {
