@@ -2,6 +2,58 @@ import type { WebClient } from "@slack/web-api";
 
 import { getParametros } from "../repositories/parametros.repository.js";
 
+export type NotificationMode = "N" | "Test" | "Y";
+
+export async function getModoNotificaciones(
+  client: WebClient,
+): Promise<NotificationMode> {
+  const parametros = await getParametros(client);
+
+  const parametro = parametros.find(
+    (item) => item.clave === "ModoNotificaciones" && item.activo,
+  );
+
+  const value = parametro?.valor?.trim();
+
+  if (value === "N" || value === "Test" || value === "Y") {
+    return value;
+  }
+
+  /*
+   * Fail-safe:
+   * si está mal configurado, no enviamos.
+   */
+  return "N";
+}
+
+export async function getNotificacionesTestChannel(
+  client: WebClient,
+): Promise<string | null> {
+  const parametros = await getParametros(client);
+
+  const parametro = parametros.find(
+    (item) => item.clave === "NotificacionesTestChannel" && item.activo,
+  );
+
+  const value = parametro?.valor?.trim();
+
+  return value?.trim() || null;
+}
+
+export async function getCronRecordatoriosDiarios(
+  client: WebClient,
+): Promise<string> {
+  const parametros = await getParametros(client);
+
+  const parametro = parametros.find(
+    (item) => item.clave === "CronRecordatoriosDiarios" && item.activo,
+  );
+
+  const value = parametro?.valor?.trim();
+
+  return value?.trim() || "0 8 * * 1-5";
+}
+
 export async function getMaxTareasVista(client: WebClient): Promise<number> {
   const parametros = await getParametros(client);
 
@@ -34,7 +86,7 @@ export async function getCronNotificacionUsuariosInactivos(
   const parametros = await getParametros(client);
 
   const parametro = parametros.find(
-    (item) => item.clave === "CronNtificacionUsuariosInactivos" && item.activo,
+    (item) => item.clave === "CronNotificacionUsuariosInactivos" && item.activo,
   );
 
   const valor = parametro?.valor?.trim();

@@ -159,20 +159,18 @@ export function buildHomeBlocks(
             value: proceso.procesoId,
           },
 
-          ...(listoParaCierre
-            ? [
-                {
-                  type: "button" as const,
-                  text: {
-                    type: "plain_text" as const,
-                    text: "Cerrar Paz y Salvo",
-                  },
-                  action_id: "pys_close_process",
-                  value: proceso.procesoId,
-                  style: "primary" as const,
-                },
-              ]
-            : []),
+          {
+            type: "button" as const,
+            text: {
+              type: "plain_text" as const,
+              text: listoParaCierre
+                ? "Cerrar Paz y Salvo"
+                : "Cerrar con excepción",
+            },
+            action_id: "pys_close_process",
+            value: proceso.procesoId,
+            style: listoParaCierre ? ("primary" as const) : ("danger" as const),
+          },
         ],
       };
       blocks.push(actions, {

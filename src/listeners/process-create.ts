@@ -4,7 +4,10 @@ import { WebClient } from "@slack/web-api";
 import { getTiposSolicitud } from "../repositories/tipos-solicitud.repository.js";
 import { correlationId, logger } from "../utils/logger.js";
 import { createPazYSalvo } from "../services/process-create.service.js";
-import { notifyProcessCreated } from "../services/notification.service.js";
+import {
+  notifyInitialProcessAssignments,
+  notifyProcessCreated,
+} from "../services/notification.service.js";
 import { publishHome } from "../services/home-publish.service.js";
 
 import { getCachedValue } from "../services/reference-data-cache.service.js";
@@ -211,12 +214,48 @@ export function registerProcessCreateListeners(app: App): void {
       "Submit de creación recibido",
     );
 
-    await ack();
+    const processingExternalId = `pys_create_${cid}`;
 
+    await ack({
+      response_action: "update",
+      view: {
+        type: "modal",
+        callback_id: "pys_create_process_processing",
+        external_id: processingExternalId,
+        private_metadata: JSON.stringify({ cid }),
+        title: {
+          type: "plain_text",
+          text: "Crear Paz y Salvo",
+        },
+        close: {
+          type: "plain_text",
+          text: "Cerrar",
+        },
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text:
+                "⏳ *Creando Paz y Salvo...*\n\n" +
+                "Estamos creando el proceso, sus áreas y tareas. " +
+                "Este mensaje se actualizará cuando finalice.",
+            },
+          },
+        ],
+      },
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    let result: Awaited<ReturnType<typeof createPazYSalvo>>;
+
+    /*
+     * Desde este punto distinguimos entre la creación transaccional del proceso
+     * y las acciones posteriores de UX/notificación. Un fallo posterior nunca
+     * debe reportar que la creación falló si el snapshot ya quedó persistido.
+     */
     try {
-      const today = new Date().toISOString().slice(0, 10);
-
-      const result = await createPazYSalvo(
+      result = await createPazYSalvo(
         client,
         {
           tipoSolicitudId,
@@ -228,59 +267,175 @@ export function registerProcessCreateListeners(app: App): void {
         },
         cid,
       );
-
-      const directMessage = buildProcessCreatedDirectMessage(result);
-
-      const channelMessage = buildProcessCreatedChannelMessage(
-        result,
-        body.user.id,
-      );
-
-      await notifyProcessCreated(client, {
-        cid,
-        procesoId: result.proceso.procesoId,
-        createdByUserId: body.user.id,
-        directMessage,
-        channelMessage,
-      });
-
-      await publishHome(client, body.user.id);
-
-      logger.info(
-        {
-          cid,
-          procesoId: result.proceso.procesoId,
-          userId: body.user.id,
-          action: "process_created_home_refreshed",
-        },
-        "Home actualizado después de crear Paz y Salvo",
-      );
-
-      logger.info(
-        {
-          cid,
-          procesoId: result.proceso.procesoId,
-          userId: body.user.id,
-          auditEvent: true,
-          action: "process_created_from_modal",
-        },
-        "Paz y Salvo creado desde App Home",
-      );
     } catch (error) {
       logger.error(
         {
           cid,
           userId: body.user.id,
           err: error,
-          action: "process_create_modal_failed",
+          action: "process_create_failed",
         },
-        "Error creando Paz y Salvo desde modal",
+        "No fue posible crear el Paz y Salvo",
       );
 
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: `No fue posible crear el Paz y Salvo. Referencia: ${cid}`,
+      try {
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: `No fue posible crear el Paz y Salvo. Referencia: ${cid}`,
+        });
+      } catch (notifyError) {
+        logger.error(
+          {
+            cid,
+            userId: body.user.id,
+            err: notifyError,
+            action: "process_create_failure_dm_failed",
+          },
+          "No fue posible notificar al creador sobre el fallo de creación",
+        );
+      }
+
+      return;
+    }
+
+    const procesoId = result.proceso.procesoId;
+
+    const directMessage = buildProcessCreatedDirectMessage(result);
+    const channelMessage = buildProcessCreatedChannelMessage(
+      result,
+      body.user.id,
+    );
+
+    try {
+      await notifyProcessCreated(client, {
+        cid,
+        procesoId,
+        createdByUserId: body.user.id,
+        directMessage,
+        channelMessage,
       });
+    } catch (error) {
+      logger.error(
+        {
+          cid,
+          procesoId,
+          userId: body.user.id,
+          err: error,
+          action: "process_created_confirmation_failed",
+        },
+        "El Paz y Salvo fue creado, pero falló la confirmación posterior",
+      );
+    }
+
+    try {
+      await notifyInitialProcessAssignments(client, {
+        cid,
+        procesoId,
+      });
+    } catch (error) {
+      logger.error(
+        {
+          cid,
+          procesoId,
+          err: error,
+          action: "process_created_initial_notifications_failed",
+        },
+        "El Paz y Salvo fue creado, pero fallaron una o más notificaciones iniciales",
+      );
+    }
+
+    try {
+      await publishHome(client, body.user.id);
+
+      logger.info(
+        {
+          cid,
+          procesoId,
+          userId: body.user.id,
+          action: "process_created_home_refreshed",
+        },
+        "Home actualizado después de crear Paz y Salvo",
+      );
+    } catch (error) {
+      logger.error(
+        {
+          cid,
+          procesoId,
+          userId: body.user.id,
+          err: error,
+          action: "process_created_home_refresh_failed",
+        },
+        "El Paz y Salvo fue creado, pero no fue posible actualizar el Home",
+      );
+    }
+
+    logger.info(
+      {
+        cid,
+        procesoId,
+        userId: body.user.id,
+        auditEvent: true,
+        action: "process_created_from_modal",
+      },
+      "Paz y Salvo creado desde App Home",
+    );
+
+    // El modal de procesamiento fue creado mediante response_action=update.
+    // Lo identificamos por external_id para poder reemplazarlo de forma
+    // asíncrona una vez finaliza la creación, sin depender del view_id original.
+    try {
+      await client.views.update({
+        external_id: processingExternalId,
+        view: {
+          type: "modal",
+          callback_id: "pys_create_process_success",
+          external_id: processingExternalId,
+          private_metadata: JSON.stringify({ cid, procesoId }),
+          title: {
+            type: "plain_text",
+            text: "Crear Paz y Salvo",
+          },
+          close: {
+            type: "plain_text",
+            text: "Cerrar",
+          },
+          blocks: [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text:
+                  "✅ *Paz y Salvo creado correctamente*\n\n" +
+                  `*Proceso:* ${procesoId}\n` +
+                  `*Empleado:* <@${employeeId}>`,
+              },
+            },
+          ],
+        },
+      });
+
+      logger.info(
+        {
+          cid,
+          procesoId,
+          userId: body.user.id,
+          action: "process_created_modal_updated",
+        },
+        "Modal actualizado con confirmación de creación",
+      );
+    } catch (error) {
+      // El proceso ya fue creado. Un fallo al reemplazar el modal es solo de UX
+      // y no debe convertir la creación en un error funcional.
+      logger.warn(
+        {
+          cid,
+          procesoId,
+          userId: body.user.id,
+          err: error,
+          action: "process_created_modal_update_failed",
+        },
+        "El Paz y Salvo fue creado, pero no fue posible actualizar el modal de procesamiento",
+      );
     }
   });
 }

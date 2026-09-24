@@ -93,12 +93,17 @@ export async function closeProcesoItem(
   slackItemId: string,
   userId: string,
   comentario?: string,
+  cierreExcepcion = false,
 ): Promise<void> {
+  const estadoFinal = cierreExcepcion
+    ? "Finalizado con excepción"
+    : "Finalizado";
+
   const estadoOption = await getSelectOptionId(
     client,
     slackLists.procesos.id,
     slackColumns.procesos.estado,
-    "Finalizado",
+    estadoFinal,
   );
 
   const fechaCierre = new Intl.DateTimeFormat("en-CA", {
@@ -115,7 +120,7 @@ export async function closeProcesoItem(
 
     userCell(slackColumns.procesos.cerradoPor, userId),
 
-    checkboxCell(slackColumns.procesos.cierreExcepcion, false),
+    checkboxCell(slackColumns.procesos.cierreExcepcion, cierreExcepcion),
   ];
 
   if (comentario !== undefined && comentario.trim() !== "") {

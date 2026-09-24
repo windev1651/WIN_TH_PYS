@@ -44,6 +44,8 @@ export type TaskReviewResult = {
 
   responsableOperativoId: string;
   requiereEvidencia: boolean;
+  areaCompleted: boolean;
+  listoParaCierre: boolean;
 };
 
 async function getReviewContext(client: WebClient, input: ReviewTaskInput) {
@@ -160,6 +162,8 @@ export async function approveTask(
     areaProcesoId: area.areaProcesoId,
     responsableOperativoId: tarea.responsableOperativoId,
     requiereEvidencia: tarea.requiereEvidencia,
+    areaCompleted: reconciliation.completed,
+    listoParaCierre: reconciliation.listoParaCierre,
   };
 }
 
@@ -239,5 +243,7 @@ export async function rejectTask(
 
     responsableOperativoId: tarea.responsableOperativoId,
     requiereEvidencia: tarea.requiereEvidencia,
+    areaCompleted: false,
+    listoParaCierre: false,
   };
 }

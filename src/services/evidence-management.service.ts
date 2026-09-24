@@ -20,7 +20,7 @@ import { getProcesos } from "../repositories/procesos-read.repository.js";
 import { getAreasProceso } from "../repositories/areas-proceso-read.repository.js";
 import { updateProgressAfterTaskManagement } from "./task-progress.service.js";
 import {
-  completeAreaFromApprovedTasks,
+  reconcileAreaCompletion,
   shouldAutoApproveArea,
 } from "./area-management.service.js";
 
@@ -277,33 +277,26 @@ export async function registerEvidence(
       : item,
   );
 
-  if (autoAprobacion) {
-    const tareasAreaActualizadas = tareasActualizadas.filter(
-      (item) => item.areaProcesoId === area.areaProcesoId,
-    );
-
-    const obligatoriasCompletas = tareasAreaActualizadas
-      .filter(
-        (item) =>
-          item.obligatoria && item.estado !== TASK_STATUS.NOT_APPLICABLE,
-      )
-      .every((item) => item.estado === TASK_STATUS.COMPLETED);
-
-    if (obligatoriasCompletas) {
-      await completeAreaFromApprovedTasks(client, {
-        area,
-        areasProceso: areas,
-        usuarioId: input.usuarioId,
-        cid: input.cid,
-      });
-    }
-  }
-
+  /*
+   * Primero persistimos el avance operativo. Después, si aplica
+   * autoaprobación, reconciliamos el cierre del área contra una
+   * lectura fresca de Slack Lists. Esto evita que un snapshot
+   * previo vuelva a sobrescribir un área ya completada.
+   */
   await updateProgressAfterTaskManagement(client, {
     procesoSlackItemId: proceso.slackItemId,
     area,
     tareas: tareasActualizadas,
   });
+
+  if (autoAprobacion) {
+    await reconcileAreaCompletion(client, {
+      procesoId: input.procesoId,
+      areaProcesoId: area.areaProcesoId,
+      usuarioId: input.usuarioId,
+      cid: input.cid,
+    });
+  }
 
   await createAuditEvent(client, {
     eventId: eventId(),

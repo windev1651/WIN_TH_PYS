@@ -53,7 +53,8 @@ function buildTaskReviewSuccessView(
   return {
     type: "modal" as const,
 
-    callback_id: "pys_task_review_success",
+    callback_id: "pys_manage_area_submit",
+    notify_on_close: true,
 
     private_metadata: JSON.stringify({
       areaProcesoId,
@@ -184,16 +185,29 @@ export function registerTaskReviewListeners(app: App): void {
 
       try {
         if ("view" in body && body.view?.id) {
-          const manageAreaView = await loadManageAreaView(client, {
-            areaProcesoId: result.areaProcesoId,
-            usuarioId: body.user.id,
-            cid,
-          });
+          if (result.areaCompleted) {
+            await client.views.update({
+              view_id: body.view.id,
+              view: buildTaskReviewSuccessView(
+                result.areaProcesoId,
+                cid,
+                result.listoParaCierre
+                  ? "Área completada. El Paz y Salvo quedó listo para cierre por Talento Humano."
+                  : "Área completada correctamente.",
+              ),
+            });
+          } else {
+            const manageAreaView = await loadManageAreaView(client, {
+              areaProcesoId: result.areaProcesoId,
+              usuarioId: body.user.id,
+              cid,
+            });
 
-          await client.views.update({
-            view_id: body.view.id,
-            view: manageAreaView,
-          });
+            await client.views.update({
+              view_id: body.view.id,
+              view: manageAreaView,
+            });
+          }
         }
       } catch (uiErr) {
         logger.warn(

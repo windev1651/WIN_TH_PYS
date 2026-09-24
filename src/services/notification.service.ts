@@ -5,6 +5,22 @@ import { logger } from "../utils/logger.js";
 import { getCanalNotificacionesTH } from "./runtime-config.service.js";
 import type { InactiveResponsibleIssue } from "./inactive-responsibles.service.js";
 
+import {
+  getModoNotificaciones,
+  getNotificacionesTestChannel,
+} from "./runtime-config.service.js";
+
+import {
+  createNotification,
+  markNotificationError,
+  markNotificationSent,
+  notificationAlreadySent,
+} from "../repositories/notificaciones.repository.js";
+
+import { getProcessDetail } from "../services/process-detail.service.js";
+import { getPysAppHomeUrl } from "../utils/slack-links.js";
+import { notiticationId } from "../utils/entity-id.js";
+
 type NotifyInactiveResponsiblesInput = {
   cid: string;
   issues: InactiveResponsibleIssue[];
@@ -61,6 +77,243 @@ type NotifyMasterResponsibleChangedInput = {
     tarea?: string;
   }>;
 };
+
+type ControlledNotificationInput = {
+  cid: string;
+
+  recipientUserId: string;
+
+  tipo:
+    | "Inicial"
+    | "Recordatorio diario"
+    | "Vencido"
+    | "Reasignación"
+    | "Evidencia"
+    | "Rechazada"
+    | "Cierre excepcional"
+    | "Resumen TH";
+
+  idempotencyKey: string;
+
+  procesoId?: string;
+  areaProcesoId?: string;
+  taskId?: string;
+
+  fechaProgramada?: string;
+
+  text: string;
+  blocks?: KnownBlock[];
+};
+
+type InitialAssignment = {
+  operativo: Array<{
+    tarea: string;
+    areaNombre: string;
+    requiereEvidencia: boolean;
+  }>;
+
+  funcional: Array<{
+    areaProcesoId: string;
+    areaNombre: string;
+    tareas: number;
+  }>;
+};
+
+export async function notifyInitialProcessAssignments(
+  client: WebClient,
+  input: {
+    cid: string;
+    procesoId: string;
+  },
+): Promise<void> {
+  const detail = await getProcessDetail(client, input.procesoId);
+
+  const assignments = new Map<string, InitialAssignment>();
+
+  for (const area of detail.areas) {
+    /*
+     * Responsable funcional.
+     */
+    const functional = assignments.get(area.responsableFuncionalId) ?? {
+      operativo: [],
+      funcional: [],
+    };
+
+    functional.funcional.push({
+      areaProcesoId: area.areaProcesoId,
+      areaNombre: area.areaNombre,
+      tareas: area.tareas.length,
+    });
+
+    assignments.set(area.responsableFuncionalId, functional);
+
+    /*
+     * Responsables operativos.
+     */
+    for (const tarea of area.tareas) {
+      const operative = assignments.get(tarea.responsableOperativoId) ?? {
+        operativo: [],
+        funcional: [],
+      };
+
+      operative.operativo.push({
+        tarea: tarea.tarea,
+        areaNombre: area.areaNombre,
+        requiereEvidencia: tarea.requiereEvidencia,
+      });
+
+      assignments.set(tarea.responsableOperativoId, operative);
+    }
+  }
+
+  for (const [userId, assignment] of assignments) {
+    const sections: string[] = [];
+
+    if (assignment.operativo.length > 0) {
+      const tareas = assignment.operativo
+        .map((item) => {
+          const evidencia = item.requiereEvidencia
+            ? " · requiere evidencia"
+            : "";
+
+          return `• *${item.tarea}*` + ` — ${item.areaNombre}` + evidencia;
+        })
+        .join("\n");
+
+      sections.push(
+        `*Tus actividades asignadas (${assignment.operativo.length}):*\n` +
+          tareas,
+      );
+    }
+
+    if (assignment.funcional.length > 0) {
+      const areas = assignment.funcional
+        .map((item) => `• *${item.areaNombre}*` + ` — ${item.tareas} tarea(s)`)
+        .join("\n");
+
+      sections.push(
+        `*Áreas bajo tu responsabilidad funcional (${assignment.funcional.length}):*\n` +
+          areas,
+      );
+    }
+
+    const appHomeUrl = getPysAppHomeUrl();
+    if (!appHomeUrl) {
+      logger.warn(
+        {
+          cid: input.cid,
+          procesoId: detail.procesoId,
+          action: "app_home_link_missing",
+        },
+        "SLACK_TEAM_ID o SLACK_APP_ID no están configurados",
+      );
+    }
+
+    const appHomeText = appHomeUrl
+      ? `Revisa la app <${appHomeUrl}|Paz y Salvo> para gestionar tus responsabilidades.`
+      : "Revisa la app *Paz y Salvo* para gestionar tus responsabilidades.";
+
+    const text =
+      "📋 *Nuevo Paz y Salvo asignado*\n\n" +
+      `*Proceso:* ${detail.procesoId}\n` +
+      `*Empleado:* <@${detail.empleadoId}>\n` +
+      `*Fecha límite:* ${detail.fechaLimite}\n\n` +
+      sections.join("\n\n") +
+      "\n\n" +
+      appHomeText;
+
+    const blocks: KnownBlock[] = [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "📋 *Nuevo Paz y Salvo asignado*\n\n" +
+            `*Proceso:* ${detail.procesoId}\n` +
+            `*Empleado:* <@${detail.empleadoId}>\n` +
+            `*Fecha límite:* ${detail.fechaLimite}`,
+        },
+      },
+      {
+        type: "divider",
+      },
+    ];
+
+    if (assignment.operativo.length > 0) {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            `*Tus actividades asignadas (${assignment.operativo.length}):*\n` +
+            assignment.operativo
+              .map((item) => {
+                const evidencia = item.requiereEvidencia
+                  ? " · requiere evidencia"
+                  : "";
+
+                return (
+                  `• *${item.tarea}*` + ` — ${item.areaNombre}` + evidencia
+                );
+              })
+              .join("\n"),
+        },
+      });
+    }
+
+    if (assignment.funcional.length > 0) {
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            `*Áreas bajo tu responsabilidad funcional (${assignment.funcional.length}):*\n` +
+            assignment.funcional
+              .map(
+                (item) =>
+                  `• *${item.areaNombre}*` + ` — ${item.tareas} tarea(s)`,
+              )
+              .join("\n"),
+        },
+      });
+    }
+
+    blocks.push({
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: appHomeText,
+        },
+      ],
+    });
+
+    await sendControlledNotification(client, {
+      cid: input.cid,
+
+      recipientUserId: userId,
+
+      tipo: "Inicial",
+
+      idempotencyKey: `INITIAL:${detail.procesoId}:${userId}`,
+
+      procesoId: detail.procesoId,
+
+      text,
+      blocks,
+    });
+  }
+
+  logger.info(
+    {
+      cid: input.cid,
+      procesoId: detail.procesoId,
+      destinatarios: assignments.size,
+      action: "initial_process_notifications_completed",
+    },
+    "Notificaciones iniciales de Paz y Salvo procesadas",
+  );
+}
 
 export async function notifyMasterResponsibleChanged(
   client: WebClient,
@@ -450,5 +703,177 @@ export async function notifyInactiveResponsibles(
       },
       "No fue posible enviar la notificación de responsables inactivos",
     );
+  }
+}
+
+export async function sendControlledNotification(
+  client: WebClient,
+  input: ControlledNotificationInput,
+): Promise<void> {
+  const mode = await getModoNotificaciones(client);
+
+  if (mode === "N") {
+    logger.info(
+      {
+        cid: input.cid,
+        recipientUserId: input.recipientUserId,
+        tipo: input.tipo,
+        action: "notification_skipped_disabled",
+      },
+      "Notificación omitida por configuración",
+    );
+
+    return;
+  }
+
+  const prefix = mode === "Test" ? "TEST" : "PROD";
+
+  const effectiveIdempotencyKey = `${prefix}:${input.idempotencyKey}`;
+
+  const alreadySent = await notificationAlreadySent(
+    client,
+    effectiveIdempotencyKey,
+  );
+
+  if (alreadySent) {
+    logger.info(
+      {
+        cid: input.cid,
+        recipientUserId: input.recipientUserId,
+        idempotencyKey: effectiveIdempotencyKey,
+        action: "notification_skipped_idempotent",
+      },
+      "Notificación ya enviada anteriormente",
+    );
+
+    return;
+  }
+
+  let destination = input.recipientUserId;
+
+  if (mode === "Test") {
+    const testChannel = await getNotificacionesTestChannel(client);
+
+    if (!testChannel) {
+      throw new Error(
+        "ModoNotificaciones=Test pero " +
+          "NotificacionesTestChannel no está configurado",
+      );
+    }
+
+    destination = testChannel;
+  }
+
+  const notificationId = `NTF-${crypto
+    .randomUUID()
+    .replaceAll("-", "")
+    .slice(0, 12)
+    .toUpperCase()}`;
+
+  const slackItemId = await createNotification(client, {
+    notificationId,
+
+    procesoId: input.procesoId,
+    areaProcesoId: input.areaProcesoId,
+    taskId: input.taskId,
+
+    destinatarioId: input.recipientUserId,
+
+    tipo: input.tipo,
+
+    fechaProgramada: input.fechaProgramada,
+
+    idempotencyKey: effectiveIdempotencyKey,
+  });
+
+  try {
+    const blocks: KnownBlock[] =
+      mode === "Test"
+        ? [
+            {
+              type: "section",
+              text: {
+                type: "mrkdwn",
+                text:
+                  "🧪 *TEST · Notificación redirigida*\n" +
+                  `*Destinatario real:* <@${input.recipientUserId}>\n` +
+                  `*Tipo:* ${input.tipo}`,
+              },
+            },
+            {
+              type: "divider",
+            },
+            ...(input.blocks && input.blocks.length > 0
+              ? input.blocks
+              : [
+                  {
+                    type: "section" as const,
+                    text: {
+                      type: "mrkdwn" as const,
+                      text: input.text,
+                    },
+                  },
+                ]),
+          ]
+        : (input.blocks ?? []);
+
+    const finalText =
+      mode === "Test"
+        ? "🧪 TEST · " +
+          `Destinatario real: <@${input.recipientUserId}>\n\n` +
+          input.text
+        : input.text;
+
+    const response = await client.chat.postMessage({
+      channel: destination,
+      text: finalText,
+
+      ...(blocks.length > 0 ? { blocks } : {}),
+    });
+
+    if (!response.ts || !response.channel) {
+      throw new Error("Slack no retornó channel/ts para la notificación");
+    }
+
+    await markNotificationSent(client, slackItemId, {
+      fechaEnvioUtc: new Date().toISOString(),
+
+      channelId: response.channel,
+
+      messageTs: response.ts,
+    });
+
+    logger.info(
+      {
+        cid: input.cid,
+        mode,
+        recipientUserId: input.recipientUserId,
+        destination,
+        tipo: input.tipo,
+        idempotencyKey: effectiveIdempotencyKey,
+        action: "controlled_notification_sent",
+      },
+      "Notificación controlada enviada",
+    );
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+
+    await markNotificationError(client, slackItemId, errorMessage);
+
+    logger.error(
+      {
+        cid: input.cid,
+        mode,
+        recipientUserId: input.recipientUserId,
+        destination,
+        tipo: input.tipo,
+        idempotencyKey: effectiveIdempotencyKey,
+        err,
+        action: "controlled_notification_failed",
+      },
+      "No fue posible enviar notificación controlada",
+    );
+
+    throw err;
   }
 }

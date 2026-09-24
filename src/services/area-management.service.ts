@@ -14,13 +14,6 @@ import {
 import { AREA_STATUS, TASK_STATUS } from "../constants/status.js";
 import { getAreasProceso } from "../repositories/areas-proceso-read.repository.js";
 
-export type CompleteAreaFromTasksInput = {
-  area: AreaProcesoDetail;
-  areasProceso: AreaProcesoDetail[];
-  usuarioId: string;
-  cid: string;
-};
-
 export type ApproveAreaInput = {
   areaProcesoId: string;
   usuarioId: string;
@@ -312,62 +305,4 @@ export function shouldAutoApproveArea(
     responsablesOperativos.size === 1 &&
     responsablesOperativos.has(area.responsableFuncionalId)
   );
-}
-
-export async function completeAreaFromApprovedTasks(
-  client: WebClient,
-  input: CompleteAreaFromTasksInput,
-): Promise<{
-  procesoId: string;
-  areaProcesoId: string;
-  areaNombre: string;
-  listoParaCierre: boolean;
-}> {
-  const { area, areasProceso } = input;
-
-  if (area.responsableFuncionalId !== input.usuarioId) {
-    throw new Error("El usuario no es responsable funcional de esta área");
-  }
-
-  if (area.estado !== "Completada") {
-    await approveAreaItem(client, area.slackItemId, input.usuarioId);
-
-    await createAuditEvent(client, {
-      eventId: eventId(),
-      correlationId: input.cid,
-      procesoId: area.procesoId,
-      entidadTipo: "AreaProceso",
-      entidadId: area.areaProcesoId,
-      accion: "APROBAR_AREA",
-      usuarioId: input.usuarioId,
-      fechaHoraUtc: new Date().toISOString(),
-      estadoAnterior: area.estado,
-      estadoNuevo: "Completada",
-      detalle:
-        "Área completada automáticamente al quedar aprobadas todas sus tareas obligatorias",
-    });
-  }
-
-  const areasActualizadas = areasProceso.map((item) =>
-    item.areaProcesoId === area.areaProcesoId
-      ? {
-          ...item,
-          estado: "Completada",
-        }
-      : item,
-  );
-
-  const processState = await recalculateProcessState(client, {
-    procesoId: area.procesoId,
-    usuarioId: input.usuarioId,
-    cid: input.cid,
-    areas: areasActualizadas,
-  });
-
-  return {
-    procesoId: area.procesoId,
-    areaProcesoId: area.areaProcesoId,
-    areaNombre: area.areaNombre,
-    listoParaCierre: processState.listoParaCierre,
-  };
 }

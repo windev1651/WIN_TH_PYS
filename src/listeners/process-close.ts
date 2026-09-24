@@ -3,9 +3,14 @@ import type { App } from "@slack/bolt";
 import { canAdministerPys } from "../services/authorization.service.js";
 import { closeProcess } from "../services/process-close.service.js";
 import { publishHome } from "../services/home-publish.service.js";
+import { getAreasProceso } from "../repositories/areas-proceso-read.repository.js";
 import { getProcesos } from "../repositories/procesos-read.repository.js";
 import { correlationId, logger } from "../utils/logger.js";
 import { buildCloseProcessView } from "../views/close-process.view.js";
+import {
+  CLOSED_PROCESS_STATUSES,
+  PROCESS_STATUS,
+} from "../constants/status.js";
 
 function buildLoadingCloseProcessView(procesoId: string, cid: string) {
   return {
@@ -96,7 +101,10 @@ export function registerProcessCloseListeners(app: App): void {
         throw new Error("Usuario no autorizado para cerrar procesos");
       }
 
-      const procesos = await getProcesos(client);
+      const [procesos, areas] = await Promise.all([
+        getProcesos(client, { bypassCache: true }),
+        getAreasProceso(client, procesoId, { bypassCache: true }),
+      ]);
 
       const proceso = procesos.find((item) => item.procesoId === procesoId);
 
@@ -104,16 +112,25 @@ export function registerProcessCloseListeners(app: App): void {
         throw new Error(`Proceso no encontrado: ${procesoId}`);
       }
 
-      if (proceso.estado !== "Pendiente de aprobación") {
+      if (CLOSED_PROCESS_STATUSES.some((status) => status === proceso.estado)) {
         throw new Error(
-          `El proceso no está listo para cierre. Estado actual: ${proceso.estado}`,
+          `El proceso ya se encuentra cerrado: ${proceso.estado}`,
         );
       }
+
+      const cierreExcepcion =
+        proceso.estado !== PROCESS_STATUS.PENDING_APPROVAL ||
+        areas.some((area) => area.estado !== "Completada");
 
       await client.views.update({
         view_id: openedViewId,
 
-        view: buildCloseProcessView(proceso.procesoId, proceso.empleadoId, cid),
+        view: buildCloseProcessView(
+          proceso.procesoId,
+          proceso.empleadoId,
+          cid,
+          cierreExcepcion,
+        ),
       });
 
       logger.info(
@@ -197,6 +214,7 @@ export function registerProcessCloseListeners(app: App): void {
     const metadata = JSON.parse(view.private_metadata || "{}") as {
       procesoId?: string;
       cid?: string;
+      cierreExcepcion?: boolean;
     };
 
     const procesoId = metadata.procesoId;
@@ -211,6 +229,16 @@ export function registerProcessCloseListeners(app: App): void {
     const commentBlock = view.state.values.close_comment;
 
     const comentario = commentBlock?.close_comment_value?.value ?? "";
+
+    if (metadata.cierreExcepcion && !comentario.trim()) {
+      await ack({
+        response_action: "errors",
+        errors: {
+          close_comment: "El motivo del cierre con excepción es obligatorio.",
+        },
+      });
+      return;
+    }
 
     await ack();
 
@@ -241,6 +269,8 @@ export function registerProcessCloseListeners(app: App): void {
           procesoId: result.procesoId,
           userId: body.user.id,
           alreadyClosed: result.alreadyClosed,
+          cierreExcepcion: result.cierreExcepcion,
+          destinatariosNotificados: result.destinatariosNotificados,
           action: "process_closed",
         },
         "Paz y Salvo cerrado correctamente",
@@ -250,7 +280,9 @@ export function registerProcessCloseListeners(app: App): void {
         channel: body.user.id,
 
         text:
-          "✅ *Paz y Salvo cerrado correctamente*\n\n" +
+          (result.cierreExcepcion
+            ? "⚠️ *Paz y Salvo cerrado con excepción*\n\n"
+            : "✅ *Paz y Salvo cerrado correctamente*\n\n") +
           `*Proceso:* ${result.procesoId}\n` +
           `*Empleado:* <@${result.empleadoId}>` +
           (comentario.trim() ? `\n*Comentario:* ${comentario.trim()}` : ""),

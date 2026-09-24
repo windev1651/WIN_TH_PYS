@@ -10,10 +10,9 @@ import { registerTaskReassignmentListeners } from "./listeners/task-reassignemen
 import { registerFunctionalReassignmentListeners } from "./listeners/functional-reassignment.js";
 import { registerManageResponsiblesListeners } from "./listeners/manage-responsibles.js";
 import { registerTaskReviewListeners } from "./listeners/task-review.js";
-
+import { logger } from "./utils/logger.js";
 import { registerSchedulers } from "./scheduler.js";
 
-import { logger } from "./utils/logger.js";
 import { validateSlackConfiguration } from "./config/slack/validate.js";
 
 function boltLogLevel(value: string): LogLevel {

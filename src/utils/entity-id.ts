@@ -23,3 +23,7 @@ export function eventId(): string {
 export function evidenceId(): string {
   return `EVD-${shortId()}`;
 }
+
+export function notiticationId(): string {
+  return `NOT-${shortId()}`;
+}

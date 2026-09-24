@@ -4,6 +4,7 @@ export function buildCloseProcessView(
   procesoId: string,
   empleadoId: string,
   cid: string,
+  cierreExcepcion = false,
 ): View {
   return {
     type: "modal",
@@ -13,6 +14,7 @@ export function buildCloseProcessView(
     private_metadata: JSON.stringify({
       procesoId,
       cid,
+      cierreExcepcion,
     }),
 
     title: {
@@ -22,7 +24,7 @@ export function buildCloseProcessView(
 
     submit: {
       type: "plain_text",
-      text: "Cerrar proceso",
+      text: cierreExcepcion ? "Cerrar con excepción" : "Cerrar proceso",
     },
 
     close: {
@@ -39,17 +41,21 @@ export function buildCloseProcessView(
             "*Confirma el cierre del Paz y Salvo.*\n\n" +
             `*Proceso:* ${procesoId}\n` +
             `*Empleado:* <@${empleadoId}>\n\n` +
-            "Al cerrar el proceso quedará marcado como *Finalizado*.",
+            (cierreExcepcion
+              ? "⚠️ El proceso todavía tiene pendientes. Al confirmar quedará marcado como *Finalizado con excepción* y se notificará a los responsables afectados."
+              : "Al cerrar el proceso quedará marcado como *Finalizado*."),
         },
       },
 
       {
         type: "input",
         block_id: "close_comment",
-        optional: true,
+        optional: !cierreExcepcion,
         label: {
           type: "plain_text",
-          text: "Comentario de cierre",
+          text: cierreExcepcion
+            ? "Motivo del cierre con excepción"
+            : "Comentario de cierre",
         },
         element: {
           type: "plain_text_input",
