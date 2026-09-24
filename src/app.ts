@@ -10,6 +10,7 @@ import { registerTaskReassignmentListeners } from "./listeners/task-reassignemen
 import { registerFunctionalReassignmentListeners } from "./listeners/functional-reassignment.js";
 import { registerManageResponsiblesListeners } from "./listeners/manage-responsibles.js";
 import { registerTaskReviewListeners } from "./listeners/task-review.js";
+import { registerProcessHistoryListeners } from "./listeners/process-history.js";
 import { logger } from "./utils/logger.js";
 import { registerSchedulers } from "./scheduler.js";
 
@@ -48,6 +49,7 @@ registerTaskReassignmentListeners(app);
 registerFunctionalReassignmentListeners(app);
 registerManageResponsiblesListeners(app);
 registerTaskReviewListeners(app);
+registerProcessHistoryListeners(app);
 
 async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, "Apagando TH_PYS");
