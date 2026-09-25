@@ -70,17 +70,6 @@ export function registerProcessHistoryListeners(app: App): void {
     const userId = body.user.id;
     const externalId = view.external_id ?? `pys_history_${cid}`;
 
-    if (!(await canAdministerPys(client, userId))) {
-      await ack({
-        response_action: "errors",
-        errors: {
-          employee: "No tienes permisos para consultar el histórico.",
-        },
-      });
-
-      return;
-    }
-
     const filters: HistoricalProcessFilters = {
       employeeId:
         view.state.values.employee?.employee_id?.selected_user ?? undefined,
@@ -114,6 +103,24 @@ export function registerProcessHistoryListeners(app: App): void {
     });
 
     try {
+      if (!(await canAdministerPys(client, userId))) {
+        logger.warn(
+          {
+            cid,
+            userId,
+            action: "history_search_unauthorized",
+          },
+          "Usuario no autorizado intentó consultar el histórico",
+        );
+
+        await client.views.update({
+          external_id: externalId,
+          view: buildHistoricalErrorView(cid, externalId),
+        });
+
+        return;
+      }
+
       const results = await searchHistoricalProcesses(client, filters);
 
       await client.views.update({
