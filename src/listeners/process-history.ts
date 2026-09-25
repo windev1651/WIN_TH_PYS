@@ -10,6 +10,7 @@ import { generateHistoricalProcessPdf } from "../services/pdf-report.service.js"
 import { createAuditEvent } from "../repositories/auditoria.repository.js";
 import { eventId } from "../utils/entity-id.js";
 import { correlationId, logger } from "../utils/logger.js";
+import { getCanalNotificacionesTH } from "../services/runtime-config.service.js";
 import {
   buildHistoricalErrorView,
   buildHistoricalLoadingView,
@@ -19,6 +20,39 @@ import {
   buildHistoricalResultsView,
   buildHistoricalSearchView,
 } from "../views/process-history.view.js";
+
+function sanitizeFilePart(value: string): string {
+  const normalized = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  return normalized || "Empleado";
+}
+
+async function getSlackUserDisplayName(
+  client: Parameters<Parameters<App["action"]>[1]>[0]["client"],
+  userId: string,
+): Promise<string> {
+  try {
+    const response = await client.users.info({ user: userId });
+    const user = response.user;
+    const profile = user?.profile;
+
+    return (
+      profile?.display_name_normalized?.trim() ||
+      profile?.real_name_normalized?.trim() ||
+      profile?.display_name?.trim() ||
+      profile?.real_name?.trim() ||
+      user?.real_name?.trim() ||
+      user?.name?.trim() ||
+      userId
+    );
+  } catch {
+    return userId;
+  }
+}
 
 export function registerProcessHistoryListeners(app: App): void {
   app.action("pys_open_history", async ({ ack, body, client }) => {
@@ -223,24 +257,37 @@ export function registerProcessHistoryListeners(app: App): void {
 
         const dataset = await getHistoricalProcessDataset(client, procesoId);
         const pdf = await generateHistoricalProcessPdf(client, dataset);
-
-        const dm = await client.conversations.open({
-          users: userId,
-        });
-
-        const channelId = dm.channel?.id;
+        const channelId = await getCanalNotificacionesTH(client);
 
         if (!channelId) {
-          throw new Error("Slack no devolvió el canal de conversación directa");
+          throw new Error("CanalNotificacionesTH no está configurado");
         }
+
+        const employeeName = await getSlackUserDisplayName(
+          client,
+          dataset.proceso.empleadoId,
+        );
+        const employeeFilePart = sanitizeFilePart(employeeName);
+        const closeDatePart = (dataset.proceso.fechaCierre ?? "SinFecha").replace(
+          /-/g,
+          "",
+        );
+        const processFilePart = sanitizeFilePart(procesoId);
+        const filename =
+          `TH_PYS_${employeeFilePart}_${closeDatePart}_${processFilePart}.pdf`;
 
         await client.filesUploadV2({
           channel_id: channelId,
           file: pdf,
-          filename: `Paz_y_Salvo_${procesoId}.pdf`,
-          title: `Paz y Salvo ${procesoId}`,
+          filename,
+          title: `Paz y Salvo - ${employeeName} - ${procesoId}`,
           initial_comment:
-            `PDF histórico generado para el proceso *${procesoId}*.`,
+            "📄 *Paz y Salvo finalizado*\n\n" +
+            `*Empleado:* <@${dataset.proceso.empleadoId}>\n` +
+            `*Proceso:* ${procesoId}\n` +
+            `*Estado:* ${dataset.proceso.estado}\n` +
+            `*Fecha de cierre:* ${formatBogotaDateTime(dataset.proceso.closedAtUtc)}\n` +
+            `*Generado por:* <@${userId}>`,
         });
 
         try {
@@ -253,7 +300,8 @@ export function registerProcessHistoryListeners(app: App): void {
             accion: "GENERAR_PDF_HISTORICO",
             usuarioId: userId,
             fechaHoraUtc: new Date().toISOString(),
-            detalle: "PDF histórico generado desde la consulta de Talento Humano",
+            detalle:
+              "PDF histórico generado desde la consulta de Talento Humano y publicado en el canal de TH",
           });
         } catch (auditErr) {
           logger.warn(
@@ -281,6 +329,7 @@ export function registerProcessHistoryListeners(app: App): void {
             procesoId,
             userId,
             bytes: pdf.length,
+            channelId,
             action: "history_pdf_generated",
           },
           "PDF histórico generado y enviado",
