@@ -81,14 +81,24 @@ export function registerProcessDetailListeners(app: App): void {
       /*
        * Consumimos el trigger_id inmediatamente.
        *
-       * Ninguna lectura de Lists debe ocurrir
-       * antes de este views.open().
+       * Desde App Home abrimos un modal nuevo. Cuando el mismo action_id
+       * se ejecuta dentro de otro modal (por ejemplo, Histórico), apilamos
+       * el detalle con views.push para conservar la vista anterior debajo.
+       *
+       * Ninguna lectura de Lists debe ocurrir antes de esta operación.
        */
-      const openResult = await client.views.open({
-        trigger_id: body.trigger_id,
+      const interactionComesFromModal =
+        "view" in body && body.view?.type === "modal";
 
-        view: buildLoadingProcessDetailView(procesoId),
-      });
+      const openResult = interactionComesFromModal
+        ? await client.views.push({
+            trigger_id: body.trigger_id,
+            view: buildLoadingProcessDetailView(procesoId),
+          })
+        : await client.views.open({
+            trigger_id: body.trigger_id,
+            view: buildLoadingProcessDetailView(procesoId),
+          });
 
       openedViewId = openResult.view?.id;
 
