@@ -22,7 +22,10 @@ export type HistoricalProcessItem = {
   empleadoId: string;
   tipoSolicitudId: string;
   estado: string;
+  creadoPorId: string;
+  fechaInicio: string;
   fechaSalida: string;
+  fechaLimite: string;
   fechaCierre: string | null;
   cerradoPorId: string | null;
   cierreExcepcion: boolean;
@@ -122,7 +125,10 @@ export async function searchHistoricalProcesses(
         empleadoId: proceso.empleadoId,
         tipoSolicitudId: proceso.tipoSolicitudId,
         estado: proceso.estado,
+        creadoPorId: proceso.creadoPorId,
+        fechaInicio: proceso.fechaInicio,
         fechaSalida: proceso.fechaSalida,
+        fechaLimite: proceso.fechaLimite,
         fechaCierre: proceso.fechaCierre,
         cerradoPorId: proceso.cerradoPorId,
         cierreExcepcion: proceso.cierreExcepcion,
@@ -241,7 +247,10 @@ export async function getHistoricalProcessDataset(
       empleadoId: proceso.empleadoId,
       tipoSolicitudId: proceso.tipoSolicitudId,
       estado: proceso.estado,
+      creadoPorId: proceso.creadoPorId,
+      fechaInicio: proceso.fechaInicio,
       fechaSalida: proceso.fechaSalida,
+      fechaLimite: proceso.fechaLimite,
       fechaCierre: proceso.fechaCierre,
       cerradoPorId: proceso.cerradoPorId,
       cierreExcepcion: proceso.cierreExcepcion,
