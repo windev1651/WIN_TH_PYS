@@ -7,6 +7,8 @@ import {
   type HistoricalProcessFilters,
 } from "../services/historical-process.service.js";
 import { generateHistoricalProcessPdf } from "../services/pdf-report.service.js";
+import { createAuditEvent } from "../repositories/auditoria.repository.js";
+import { eventId } from "../utils/entity-id.js";
 import { correlationId, logger } from "../utils/logger.js";
 import {
   buildHistoricalErrorView,
@@ -240,6 +242,31 @@ export function registerProcessHistoryListeners(app: App): void {
           initial_comment:
             `PDF histórico generado para el proceso *${procesoId}*.`,
         });
+
+        try {
+          await createAuditEvent(client, {
+            eventId: eventId(),
+            correlationId: cid,
+            procesoId,
+            entidadTipo: "Proceso",
+            entidadId: procesoId,
+            accion: "GENERAR_PDF_HISTORICO",
+            usuarioId: userId,
+            fechaHoraUtc: new Date().toISOString(),
+            detalle: "PDF histórico generado desde la consulta de Talento Humano",
+          });
+        } catch (auditErr) {
+          logger.warn(
+            {
+              cid,
+              procesoId,
+              userId,
+              err: auditErr,
+              action: "history_pdf_audit_failed",
+            },
+            "El PDF fue generado, pero no fue posible registrar la auditoría",
+          );
+        }
 
         if (openedViewId) {
           await client.views.update({
