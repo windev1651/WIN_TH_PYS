@@ -50,7 +50,11 @@ export function buildProcessDetailView(
         },
         {
           type: "mrkdwn",
-          text: `*Avance*\n${detail.porcentajeAvance}%`,
+          text: `*Avance operativo*\n${detail.porcentajeAvance}%`,
+        },
+        {
+          type: "mrkdwn",
+          text: `*Fecha creación*\n${detail.fechaInicio}`,
         },
         {
           type: "mrkdwn",
@@ -131,6 +135,8 @@ export function buildProcessDetailView(
 
       const obligatoria = tarea.obligatoria ? "Sí" : "No";
 
+      const comentario = tarea.comentario?.trim();
+
       blocks.push({
         type: "section",
 
@@ -139,7 +145,8 @@ export function buildProcessDetailView(
           text:
             `${taskEmoji(tarea.estado)} *${tarea.tarea}*\n` +
             `Responsable: <@${tarea.responsableOperativoId}>\n` +
-            `Estado: ${tarea.estado} · Obligatoria: ${obligatoria} · Evidencia: ${evidencia}`,
+            `Estado: ${tarea.estado} · Obligatoria: ${obligatoria} · Evidencia: ${evidencia}` +
+            (comentario ? `\n*Comentario:* ${comentario}` : ""),
         },
 
         ...(options.puedeAdministrar &&
