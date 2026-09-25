@@ -4,6 +4,7 @@ import type { ProcessDetail } from "../types/process-detail.js";
 import {
   AREA_STATUS,
   CLOSED_PROCESS_STATUSES,
+  PROCESS_STATUS,
   TASK_STATUS,
 } from "../constants/status.js";
 
@@ -71,6 +72,33 @@ export function buildProcessDetailView(
       type: "divider",
     },
   ];
+
+  const puedeGenerarPdf =
+    options.puedeAdministrar &&
+    [PROCESS_STATUS.COMPLETED, PROCESS_STATUS.COMPLETED_WITH_EXCEPTION].some(
+      (status) => status === detail.estado,
+    );
+
+  if (puedeGenerarPdf) {
+    blocks.push({
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "Generar PDF",
+          },
+          action_id: "pys_generate_process_pdf",
+          value: detail.procesoId,
+        },
+      ],
+    });
+
+    blocks.push({
+      type: "divider",
+    });
+  }
 
   if (detail.comentarioTH) {
     blocks.push({
