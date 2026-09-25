@@ -149,8 +149,10 @@ export function buildHomeBlocks(
             `${getSemaphoreEmoji(proceso.semaforo)} *${proceso.procesoId}*\n` +
             `Empleado: <@${proceso.empleadoId}>\n` +
             `Estado: *${proceso.estado}*\n` +
+            `Fecha creación: ${proceso.fechaInicio}\n` +
+            `Fecha salida: ${proceso.fechaSalida}\n` +
             `Fecha límite: ${proceso.fechaLimite}\n` +
-            `Avance: ${proceso.porcentajeAvance}%`,
+            `Avance operativo: ${proceso.porcentajeAvance}%`,
         },
       });
 
