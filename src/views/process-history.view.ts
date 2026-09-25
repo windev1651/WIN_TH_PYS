@@ -320,7 +320,7 @@ export function buildHistoricalPdfSuccessView(
           type: "mrkdwn",
           text:
             "✅ *PDF generado correctamente*\n\n" +
-            `El documento del proceso *${procesoId}* fue enviado a tu conversación con la app.`,
+            `El documento del proceso *${procesoId}* fue publicado en el canal de Talento Humano.`,
         },
       },
     ],
