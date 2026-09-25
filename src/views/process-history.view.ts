@@ -188,15 +188,29 @@ export function buildHistoricalResultsView(
             `Fecha salida: ${proceso.fechaSalida}\n` +
             `Cierre: ${formatBogotaDateTime(proceso.closedAtUtc)}`,
         },
-        accessory: {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "Ver detalle",
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Ver detalle",
+            },
+            action_id: "pys_view_process",
+            value: proceso.procesoId,
           },
-          action_id: "pys_view_process",
-          value: proceso.procesoId,
-        },
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "Generar PDF",
+            },
+            action_id: "pys_generate_process_pdf",
+            value: proceso.procesoId,
+          },
+        ],
       },
       {
         type: "divider",
@@ -245,6 +259,98 @@ export function buildHistoricalErrorView(
           type: "mrkdwn",
           text:
             "⚠️ *No fue posible consultar el histórico.*\n\n" +
+            `Referencia: \`${cid}\``,
+        },
+      },
+    ],
+  };
+}
+
+
+export function buildHistoricalPdfLoadingView(
+  procesoId: string,
+  cid: string,
+): View {
+  return {
+    type: "modal",
+    callback_id: "pys_history_pdf_loading",
+    private_metadata: JSON.stringify({ procesoId, cid }),
+    title: {
+      type: "plain_text",
+      text: "Generar PDF",
+    },
+    close: {
+      type: "plain_text",
+      text: "Cerrar",
+    },
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "⏳ *Generando PDF...*\n\n" +
+            `Estamos consolidando la información del proceso *${procesoId}*.`,
+        },
+      },
+    ],
+  };
+}
+
+export function buildHistoricalPdfSuccessView(
+  procesoId: string,
+  cid: string,
+): View {
+  return {
+    type: "modal",
+    callback_id: "pys_history_pdf_success",
+    private_metadata: JSON.stringify({ procesoId, cid }),
+    title: {
+      type: "plain_text",
+      text: "Generar PDF",
+    },
+    close: {
+      type: "plain_text",
+      text: "Cerrar",
+    },
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "✅ *PDF generado correctamente*\n\n" +
+            `El documento del proceso *${procesoId}* fue enviado a tu conversación con la app.`,
+        },
+      },
+    ],
+  };
+}
+
+export function buildHistoricalPdfErrorView(
+  procesoId: string,
+  cid: string,
+): View {
+  return {
+    type: "modal",
+    callback_id: "pys_history_pdf_error",
+    private_metadata: JSON.stringify({ procesoId, cid }),
+    title: {
+      type: "plain_text",
+      text: "Generar PDF",
+    },
+    close: {
+      type: "plain_text",
+      text: "Cerrar",
+    },
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "⚠️ *No fue posible generar el PDF.*\n\n" +
+            `Proceso: *${procesoId}*\n` +
             `Referencia: \`${cid}\``,
         },
       },
