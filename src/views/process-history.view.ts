@@ -39,11 +39,12 @@ export function buildHistoricalSearchView(cid: string): View {
           text: "Persona",
         },
         element: {
-          type: "users_select",
-          action_id: "employee_id",
+          type: "external_select",
+          action_id: "pys_history_employee_search",
+          min_query_length: 0,
           placeholder: {
             type: "plain_text",
-            text: "Cualquier persona",
+            text: "Buscar persona",
           },
         },
       },
