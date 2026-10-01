@@ -78,6 +78,108 @@ type NotifyMasterResponsibleChangedInput = {
   }>;
 };
 
+export type FunctionalReviewTask = {
+  procesoId: string;
+  empleadoId: string;
+  areaProcesoId: string;
+  areaNombre: string;
+  taskId: string;
+  tarea: string;
+  comentario: string;
+  responsableFuncionalId: string;
+  requiereEvidencia: boolean;
+};
+
+export async function notifyFunctionalsPendingReview(
+  client: WebClient,
+  input: { cid: string; tasks: FunctionalReviewTask[] },
+): Promise<void> {
+  if (input.tasks.length === 0) return;
+
+  const mode = await getModoNotificaciones(client);
+
+  if (mode === "N") {
+    logger.info(
+      {
+        cid: input.cid,
+        tasks: input.tasks.length,
+        action: "functional_review_notifications_skipped_disabled",
+      },
+      "Notificaciones de revisión funcional omitidas por configuración",
+    );
+    return;
+  }
+
+  const byFunctional = new Map<string, FunctionalReviewTask[]>();
+
+  for (const task of input.tasks) {
+    const current = byFunctional.get(task.responsableFuncionalId) ?? [];
+    current.push(task);
+    byFunctional.set(task.responsableFuncionalId, current);
+  }
+
+  const testChannel =
+    mode === "Test" ? await getNotificacionesTestChannel(client) : undefined;
+
+  if (mode === "Test" && !testChannel) {
+    throw new Error(
+      "ModoNotificaciones=Test pero NotificacionesTestChannel no está configurado",
+    );
+  }
+
+  for (const [functionalId, tasks] of byFunctional) {
+    const first = tasks[0]!;
+    const detail = tasks
+      .map(
+        (task) =>
+          `• *${task.tarea}*` +
+          (task.requiereEvidencia ? " · 📎 evidencia" : "") +
+          `\n  Área: ${task.areaNombre}` +
+          `\n  Comentario: ${task.comentario}`,
+      )
+      .join("\n\n");
+
+    const baseText =
+      "📝 *Tareas pendientes de tu revisión*\n\n" +
+      `*Proceso:* ${first.procesoId}\n` +
+      `*Empleado:* <@${first.empleadoId}>\n\n` +
+      detail +
+      "\n\nRevisa estas tareas desde la app *Paz y Salvo*.";
+
+    const destination = mode === "Test" ? testChannel! : functionalId;
+    const text =
+      mode === "Test"
+        ? "🧪 *TEST · Notificación redirigida*\n" +
+          `*Destinatario real:* <@${functionalId}>\n\n` +
+          baseText
+        : baseText;
+
+    try {
+      await client.chat.postMessage({ channel: destination, text });
+      logger.info(
+        {
+          cid: input.cid,
+          responsableFuncionalId: functionalId,
+          tasks: tasks.length,
+          mode,
+          action: "functional_review_notification_sent",
+        },
+        "Notificación de revisión funcional enviada",
+      );
+    } catch (err) {
+      logger.error(
+        {
+          cid: input.cid,
+          responsableFuncionalId: functionalId,
+          tasks: tasks.length,
+          err,
+          action: "functional_review_notification_failed",
+        },
+        "No fue posible enviar la notificación de revisión funcional",
+      );
+    }
+  }
+}
 type ControlledNotificationInput = {
   cid: string;
 
