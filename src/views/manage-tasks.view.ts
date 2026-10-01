@@ -189,6 +189,7 @@ export function buildManageTasksView(
     private_metadata: JSON.stringify({
       cid,
       procesoId,
+      employeeId: firstTask.empleadoId,
       page: safePage,
     }),
 
