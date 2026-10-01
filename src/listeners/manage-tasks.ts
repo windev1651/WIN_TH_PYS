@@ -29,6 +29,10 @@ function getErrorMessage(err: unknown): string {
   return "Ocurrió un error inesperado.";
 }
 
+function manageTasksExternalId(cid: string): string {
+  return `pys_manage_tasks_${cid}`;
+}
+
 function buildManageTasksErrorView(
   procesoId: string,
   cid: string,
@@ -38,6 +42,7 @@ function buildManageTasksErrorView(
     type: "modal" as const,
 
     callback_id: "pys_manage_tasks_error",
+    external_id: manageTasksExternalId(cid),
 
     private_metadata: JSON.stringify({
       procesoId,
@@ -94,6 +99,7 @@ function buildManageTasksSuccessView(
   return {
     type: "modal" as const,
     callback_id: "pys_manage_tasks_success",
+    external_id: manageTasksExternalId(cid),
     notify_on_close: true,
     private_metadata: JSON.stringify({
       procesoId,
@@ -127,6 +133,7 @@ function buildManageTasksProcessingView(procesoId: string, cid: string) {
     type: "modal" as const,
 
     callback_id: "pys_manage_tasks_processing",
+    external_id: manageTasksExternalId(cid),
 
     private_metadata: JSON.stringify({
       procesoId,
@@ -722,7 +729,7 @@ export function registerManageTasksListeners(app: App): void {
 
       try {
         await client.views.update({
-          view_id: view.id,
+          external_id: manageTasksExternalId(cid),
 
           view: buildManageTasksSuccessView(
             procesoId,
@@ -749,7 +756,7 @@ export function registerManageTasksListeners(app: App): void {
 
       try {
         await client.views.update({
-          view_id: view.id,
+          external_id: manageTasksExternalId(cid),
 
           view: buildManageTasksErrorView(procesoId, cid, errorMessage),
         });
