@@ -15,17 +15,20 @@ type PdfLine = {
 
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
-const MARGIN_X = 48;
-const MARGIN_TOP = 52;
-const MARGIN_BOTTOM = 52;
+
+const MARGIN_X = 36;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN_X * 2;
+const BODY_TOP = 686;
+const MARGIN_BOTTOM = 92;
+
+const HEADER_TOP = 812;
+const HEADER_BOTTOM = 716;
 
 function normalizePdfText(value: string): string {
   return value
     .replace(/\u2013|\u2014/g, "-")
     .replace(/\u2018|\u2019/g, "'")
     .replace(/\u201c|\u201d/g, '"')
-    .replace(/\u2022/g, "-")
     .replace(/[^\x20-\xFF]/g, "?");
 }
 
@@ -75,38 +78,134 @@ function wrapText(text: string, size: number, width: number): string[] {
   });
 }
 
+function bullet(text: string): string {
+  // 0x95 corresponde al bullet de WinAnsiEncoding.
+  return `\x95  ${text}`;
+}
+
 class SimplePdf {
   private pages: string[][] = [[]];
-  private y = PAGE_HEIGHT - MARGIN_TOP;
+  private y = BODY_TOP;
+
+  constructor() {
+    this.drawPageHeader();
+  }
 
   private currentPage(): string[] {
     return this.pages[this.pages.length - 1]!;
   }
 
-  private newPage(): void {
-    this.pages.push([]);
-    this.y = PAGE_HEIGHT - MARGIN_TOP;
-  }
-
-  addRule(gapAfter = 10): void {
-    if (this.y < MARGIN_BOTTOM + 24) {
-      this.newPage();
-    }
+  private addTextAt(
+    text: string,
+    x: number,
+    y: number,
+    size: number,
+    bold = false,
+    color: [number, number, number] = [0, 0, 0],
+  ): void {
+    const font = bold ? "F2" : "F1";
+    const [r, g, b] = color;
 
     this.currentPage().push(
-      `0.78 G 0.6 w ${MARGIN_X} ${this.y.toFixed(2)} m ${(
-        PAGE_WIDTH - MARGIN_X
-      ).toFixed(2)} ${this.y.toFixed(2)} l S`,
+      `BT /${font} ${size} Tf ${r} ${g} ${b} rg ${x.toFixed(
+        2,
+      )} ${y.toFixed(2)} Td (${escapePdfText(text)}) Tj ET`,
+    );
+  }
+
+  private addCenteredText(
+    text: string,
+    left: number,
+    right: number,
+    y: number,
+    size: number,
+    bold = false,
+    color: [number, number, number] = [0, 0, 0],
+  ): void {
+    const estimatedWidth = normalizePdfText(text).length * size * 0.52;
+    const x = left + Math.max(0, (right - left - estimatedWidth) / 2);
+
+    this.addTextAt(text, x, y, size, bold, color);
+  }
+
+  private drawPageHeader(): void {
+    const left = MARGIN_X;
+    const right = PAGE_WIDTH - MARGIN_X;
+    const width = right - left;
+
+    const upperBottom = 752;
+    const upperMiddle = 782;
+    const lowerMiddle = 734;
+    const logoRight = 157;
+    const titleRight = 462;
+    const lowerMiddleX = left + width / 2;
+
+    this.currentPage().push(
+      "0 G 0.7 w",
+      `${left} ${HEADER_BOTTOM} ${width} ${HEADER_TOP - HEADER_BOTTOM} re S`,
+      `${left} ${upperBottom} m ${right} ${upperBottom} l S`,
+      `${logoRight} ${upperBottom} m ${logoRight} ${HEADER_TOP} l S`,
+      `${titleRight} ${upperBottom} m ${titleRight} ${HEADER_TOP} l S`,
+      `${logoRight} ${upperMiddle} m ${right} ${upperMiddle} l S`,
+      `${left} ${lowerMiddle} m ${right} ${lowerMiddle} l S`,
+      `${lowerMiddleX.toFixed(2)} ${HEADER_BOTTOM} m ${lowerMiddleX.toFixed(
+        2,
+      )} ${upperBottom} l S`,
     );
 
-    this.y -= gapAfter;
+    // Marca visual equivalente al encabezado corporativo del formato.
+    this.addCenteredText("WIN", left, logoRight, 777, 31, true, [1, 0.28, 0]);
+    this.addCenteredText(
+      "sports",
+      left,
+      logoRight,
+      760,
+      11,
+      true,
+      [1, 0.28, 0],
+    );
+
+    this.addCenteredText("Formato", logoRight, titleRight, 796, 10, true);
+    this.addCenteredText("Paz y Salvo", logoRight, titleRight, 764, 11);
+
+    this.addCenteredText(
+      "Macroproceso",
+      left,
+      lowerMiddleX,
+      740,
+      9,
+      true,
+    );
+    this.addCenteredText(
+      "Proceso",
+      lowerMiddleX,
+      right,
+      740,
+      9,
+      true,
+    );
+
+    this.addCenteredText(
+      "Talento Humano",
+      left,
+      lowerMiddleX,
+      722,
+      9,
+    );
+    this.addCenteredText("Nómina", lowerMiddleX, right, 722, 9);
+  }
+
+  private newPage(): void {
+    this.pages.push([]);
+    this.y = BODY_TOP;
+    this.drawPageHeader();
   }
 
   addLine(line: PdfLine): void {
     const size = line.size ?? 10;
     const indent = line.indent ?? 0;
-    const lineHeight = size * 1.35;
-    const gapAfter = line.gapAfter ?? 4;
+    const lineHeight = size * 1.3;
+    const gapAfter = line.gapAfter ?? 3;
     const x = MARGIN_X + indent;
     const availableWidth = CONTENT_WIDTH - indent;
     const wrapped = wrapText(line.text, size, availableWidth);
@@ -139,6 +238,31 @@ class SimplePdf {
     this.y -= points;
   }
 
+  private footerCommands(pageNumber: number, totalPages: number): string[] {
+    const disclaimer =
+      "Este documento consolida el estado final del proceso y su trazabilidad operativa y funcional. " +
+      "Los intentos de rechazo previos no se incluyen en este reporte; permanecen disponibles en la auditoría del sistema.";
+
+    const disclaimerLines = wrapText(disclaimer, 8, CONTENT_WIDTH);
+    const commands: string[] = [];
+    let y = 54;
+
+    for (const line of disclaimerLines.slice(0, 3)) {
+      commands.push(
+        `BT /F1 8 Tf 0 g ${MARGIN_X.toFixed(2)} ${y.toFixed(
+          2,
+        )} Td (${escapePdfText(line)}) Tj ET`,
+      );
+      y -= 9;
+    }
+
+    commands.push(
+      `BT /F1 8 Tf 0.35 g ${MARGIN_X.toFixed(2)} 20 Td (Documento generado por TH_PYS - Página ${pageNumber} de ${totalPages}) Tj ET`,
+    );
+
+    return commands;
+  }
+
   toBuffer(): Buffer {
     const objects: Buffer[] = [];
 
@@ -162,15 +286,15 @@ class SimplePdf {
 
     for (let index = 0; index < this.pages.length; index += 1) {
       const pageNumber = index + 1;
-      const footer =
-        `BT /F1 8 Tf 0.4 g ${MARGIN_X.toFixed(2)} 28 Td ` +
-        `(Documento generado por TH_PYS - Pagina ${pageNumber} de ${this.pages.length}) Tj ET`;
-
-      const streamText = [...this.pages[index]!, footer].join("\n");
+      const footer = this.footerCommands(pageNumber, this.pages.length);
+      const streamText = [...this.pages[index]!, ...footer].join("\n");
       const streamBuffer = Buffer.from(streamText, "latin1");
       const contentId = addObject(
         Buffer.concat([
-          Buffer.from(`<< /Length ${streamBuffer.length} >>\nstream\n`, "latin1"),
+          Buffer.from(
+            `<< /Length ${streamBuffer.length} >>\nstream\n`,
+            "latin1",
+          ),
           streamBuffer,
           Buffer.from("\nendstream", "latin1"),
         ]),
@@ -197,7 +321,9 @@ class SimplePdf {
       "latin1",
     );
 
-    const chunks: Buffer[] = [Buffer.from("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n", "latin1")];
+    const chunks: Buffer[] = [
+      Buffer.from("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n", "latin1"),
+    ];
     const offsets: number[] = [0];
     let length = chunks[0]!.length;
 
@@ -303,137 +429,129 @@ export async function generateHistoricalProcessPdf(
   const proceso = dataset.proceso;
 
   pdf.addLine({
-    text: "PAZ Y SALVO - REGISTRO DE GESTION",
-    size: 17,
-    bold: true,
-    gapAfter: 4,
-  });
-  pdf.addLine({
-    text: `Proceso: ${proceso.procesoId}`,
-    size: 11,
+    text: "Información general",
+    size: 14,
     bold: true,
     gapAfter: 12,
   });
 
-  pdf.addLine({ text: "Informacion general", size: 12, bold: true, gapAfter: 6 });
-  pdf.addLine({ text: `Empleado: ${userName(proceso.empleadoId)}` });
-  pdf.addLine({ text: `Tipo de solicitud: ${proceso.tipoSolicitudId}` });
-  pdf.addLine({ text: `Estado final: ${proceso.estado}` });
-  pdf.addLine({ text: `Creado por: ${userName(proceso.creadoPorId)}` });
-  pdf.addLine({ text: `Fecha de creacion: ${formatDate(proceso.fechaInicio)}` });
-  pdf.addLine({ text: `Fecha de salida: ${formatDate(proceso.fechaSalida)}` });
-  pdf.addLine({ text: `Fecha limite: ${formatDate(proceso.fechaLimite)}` });
+  pdf.addLine({ text: bullet(`Empleado: ${userName(proceso.empleadoId)}`) });
+  pdf.addLine({ text: bullet(`Proceso: ${proceso.procesoId}`) });
   pdf.addLine({
-    text: `Cierre: ${formatBogotaDateTime(proceso.closedAtUtc)}`,
+    text: bullet(`Tipo de solicitud: ${proceso.tipoSolicitudId}`),
+  });
+  pdf.addLine({ text: bullet(`Estado final: ${proceso.estado}`) });
+  pdf.addLine({
+    text: bullet(`Creado por: ${userName(proceso.creadoPorId)}`),
   });
   pdf.addLine({
-    text: `Cerrado por: ${userName(proceso.cerradoPorId)}`,
-    gapAfter: 8,
+    text: bullet(`Fecha de creación: ${formatDate(proceso.fechaInicio)}`),
+  });
+  pdf.addLine({
+    text: bullet(`Fecha de salida: ${formatDate(proceso.fechaSalida)}`),
+  });
+  pdf.addLine({
+    text: bullet(`Fecha límite: ${formatDate(proceso.fechaLimite)}`),
+  });
+  pdf.addLine({
+    text: bullet(`Cierre: ${formatBogotaDateTime(proceso.closedAtUtc)}`),
+  });
+  pdf.addLine({
+    text: bullet(`Cerrado por: ${userName(proceso.cerradoPorId)}`),
   });
 
-  if (proceso.cierreExcepcion) {
+  if (proceso.comentarioTH?.trim()) {
     pdf.addLine({
-      text: "Cierre con excepcion",
-      size: 11,
-      bold: true,
-      gapAfter: 4,
+      text: bullet(
+        `Comentario de Talento Humano: ${proceso.comentarioTH.trim()}`,
+      ),
+      gapAfter: 10,
     });
-    pdf.addLine({
-      text: `Motivo: ${proceso.comentarioTH?.trim() || "No registrado"}`,
-      gapAfter: 8,
-    });
-  } else if (proceso.comentarioTH?.trim()) {
-    pdf.addLine({
-      text: `Comentario de Talento Humano: ${proceso.comentarioTH.trim()}`,
-      gapAfter: 8,
-    });
+  } else {
+    pdf.addSpacer(7);
   }
 
-  pdf.addRule(12);
   pdf.addLine({
-    text: "Gestion por areas y tareas",
-    size: 12,
+    text: "Gestión por áreas y tareas",
+    size: 14,
     bold: true,
-    gapAfter: 10,
+    gapAfter: 14,
   });
 
-  for (const area of dataset.areas) {
+  dataset.areas.forEach((area, areaIndex) => {
     pdf.addLine({
-      text: area.areaNombre,
+      text: `${areaIndex + 1}.  ${area.areaNombre}`,
       size: 11,
       bold: true,
-      gapAfter: 4,
-    });
-    pdf.addLine({
-      text: `Responsable funcional: ${userName(area.responsableFuncionalId)}`,
-      indent: 8,
-    });
-    pdf.addLine({
-      text: `Area completada: ${formatBogotaDateTime(area.completadaEnUtc)}`,
-      indent: 8,
-    });
-    pdf.addLine({
-      text: `Completada por: ${userName(area.completadaPorId)}`,
-      indent: 8,
-      gapAfter: 6,
+      gapAfter: 8,
     });
 
-    for (const task of area.tareas) {
+    pdf.addLine({
+      text: bullet(
+        `Responsable funcional: ${userName(area.responsableFuncionalId)}`,
+      ),
+      indent: 0,
+    });
+    pdf.addLine({
+      text: bullet(
+        `Área completada: ${formatBogotaDateTime(area.completadaEnUtc)}`,
+      ),
+      indent: 0,
+    });
+    pdf.addLine({
+      text: bullet(`Completada por: ${userName(area.completadaPorId)}`),
+      indent: 0,
+      gapAfter: 8,
+    });
+
+    area.tareas.forEach((task, taskIndex) => {
       pdf.addLine({
-        text: `- ${task.tarea}`,
+        text: `${areaIndex + 1}.${taskIndex + 1}  ${task.tarea}`,
         bold: true,
-        indent: 16,
-        gapAfter: 2,
+        indent: 24,
+        gapAfter: 6,
       });
       pdf.addLine({
-        text: `Estado: ${task.estado}`,
-        indent: 28,
-        gapAfter: 2,
+        text: bullet(`Estado: ${task.estado}`),
+        indent: 0,
       });
       pdf.addLine({
-        text: `Responsable operativo: ${userName(task.responsableOperativoId)}`,
-        indent: 28,
-        gapAfter: 2,
+        text: bullet(
+          `Responsable operativo: ${userName(task.responsableOperativoId)}`,
+        ),
+        indent: 0,
       });
       pdf.addLine({
-        text:
-          `Gestion: ${formatBogotaDateTime(task.gestionadoEnUtc)}` +
-          (task.gestionadoPorId
-            ? ` - por ${userName(task.gestionadoPorId)}`
-            : ""),
-        indent: 28,
-        gapAfter: 2,
+        text: bullet(
+          `Gestión: ${formatBogotaDateTime(task.gestionadoEnUtc)}` +
+            (task.gestionadoPorId
+              ? ` - por ${userName(task.gestionadoPorId)}`
+              : ""),
+        ),
+        indent: 0,
       });
       pdf.addLine({
-        text:
-          `Aprobacion: ${formatBogotaDateTime(task.aprobadoEnUtc)}` +
-          (task.aprobadoPorId
-            ? ` - por ${userName(task.aprobadoPorId)}`
-            : ""),
-        indent: 28,
-        gapAfter: 2,
+        text: bullet(
+          `Aprobación: ${formatBogotaDateTime(task.aprobadoEnUtc)}` +
+            (task.aprobadoPorId
+              ? ` - por ${userName(task.aprobadoPorId)}`
+              : ""),
+        ),
+        indent: 0,
       });
 
       if (task.comentario?.trim()) {
         pdf.addLine({
-          text: `Comentario: ${task.comentario.trim()}`,
-          indent: 28,
-          gapAfter: 4,
+          text: bullet(`Comentario: ${task.comentario.trim()}`),
+          indent: 0,
+          gapAfter: 8,
         });
       } else {
-        pdf.addSpacer(3);
+        pdf.addSpacer(6);
       }
-    }
+    });
 
-    pdf.addRule(10);
-  }
-
-  pdf.addLine({
-    text:
-      "Este documento consolida el estado final del proceso y su trazabilidad operativa y funcional. " +
-      "Los intentos de rechazo previos no se incluyen en este reporte; permanecen disponibles en la auditoria del sistema.",
-    size: 8,
-    gapAfter: 0,
+    pdf.addSpacer(8);
   });
 
   return pdf.toBuffer();
