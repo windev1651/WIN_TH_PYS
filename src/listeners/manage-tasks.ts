@@ -15,6 +15,10 @@ import { getProcesos } from "../repositories/procesos-read.repository.js";
 import { getMaxTareasVista } from "../services/runtime-config.service.js";
 import { registerEvidence } from "../services/evidence-management.service.js";
 import { publishHome } from "../services/home-publish.service.js";
+import {
+  notifyFunctionalsPendingReview,
+  type FunctionalReviewTask,
+} from "../services/notification.service.js";
 
 import {
   releaseOperationLock,
@@ -335,6 +339,7 @@ export function registerManageTasksListeners(app: App): void {
     const metadata = JSON.parse(view.private_metadata || "{}") as {
       cid?: string;
       procesoId?: string;
+      employeeId?: string;
       page?: number;
     };
 
@@ -342,6 +347,7 @@ export function registerManageTasksListeners(app: App): void {
 
     const cid = metadata.cid ?? correlationId("tasks");
     const procesoId = metadata.procesoId;
+    const employeeId = metadata.employeeId;
     const page = metadata.page ?? 0;
 
     if (!procesoId) {
@@ -465,6 +471,7 @@ export function registerManageTasksListeners(app: App): void {
       const start = page * maxTareasVista;
       const tareasVisibles = tareasProceso.slice(start, start + maxTareasVista);
       const resultados: CompleteTaskResult[] = [];
+      const functionalReviewTasks: FunctionalReviewTask[] = [];
 
       const evidenciasDetalle: Array<{
         procesoId: string;
@@ -541,7 +548,7 @@ export function registerManageTasksListeners(app: App): void {
             nombreArchivo: archivo.name ?? archivo.id,
           };
 
-          const evidenceId = await registerEvidence(client, {
+          const evidenceResult = await registerEvidence(client, {
             procesoId: tarea.procesoId,
             taskId: tarea.taskId,
             usuarioId: body.user.id,
@@ -556,6 +563,20 @@ export function registerManageTasksListeners(app: App): void {
             nombreArchivo: archivo.name ?? archivo.id,
           });
 
+          if (evidenceResult.notificarFuncional && employeeId) {
+            functionalReviewTasks.push({
+              procesoId: evidenceResult.procesoId,
+              empleadoId: employeeId,
+              areaProcesoId: evidenceResult.areaProcesoId,
+              areaNombre: evidenceResult.areaNombre,
+              taskId: evidenceResult.taskId,
+              tarea: evidenceResult.tarea,
+              comentario: evidenceResult.comentario,
+              responsableFuncionalId: evidenceResult.responsableFuncionalId,
+              requiereEvidencia: true,
+            });
+          }
+
           evidenciasRegistradas += 1;
 
           logger.info(
@@ -563,7 +584,7 @@ export function registerManageTasksListeners(app: App): void {
               cid,
               procesoId: tarea.procesoId,
               taskId: tarea.taskId,
-              evidenceId: evidenceId.evidenceId,
+              evidenceId: evidenceResult.evidenceId,
               slackFileId: archivo.id,
               action: "task_evidence_registered",
             },
@@ -595,14 +616,35 @@ export function registerManageTasksListeners(app: App): void {
         });
 
         resultados.push(resultado);
+
+        if (resultado.notificarFuncional && employeeId && resultado.comentario) {
+          functionalReviewTasks.push({
+            procesoId: resultado.procesoId,
+            empleadoId: employeeId,
+            areaProcesoId: resultado.areaProcesoId,
+            areaNombre: resultado.areaNombre,
+            taskId: resultado.taskId,
+            tarea: resultado.tarea,
+            comentario: resultado.comentario,
+            responsableFuncionalId: resultado.responsableFuncionalId,
+            requiereEvidencia: false,
+          });
+        }
+
         completadas += 1;
       }
+
+      await notifyFunctionalsPendingReview(client, {
+        cid,
+        tasks: functionalReviewTasks,
+      });
 
       logger.info(
         {
           cid,
           userId: body.user.id,
           completadas,
+          revisionesFuncionalesNotificadas: functionalReviewTasks.length,
           action: "manage_tasks_saved",
         },
         "Cambios de tareas guardados",
@@ -663,7 +705,7 @@ export function registerManageTasksListeners(app: App): void {
         });
 
         const areasAutoAprobadas = resultados.filter(
-          (resultado) => resultado.autoAprobacion,
+          (resultado) => resultado.areaCompletada,
         );
 
         if (areasAutoAprobadas.length > 0) {
@@ -687,9 +729,9 @@ export function registerManageTasksListeners(app: App): void {
             channel: body.user.id,
 
             text:
-              "✅ *Área aprobada automáticamente*\n\n" +
+              "✅ *Área completada automáticamente*\n\n" +
               `${detalleAreas}\n\n` +
-              "La aprobación fue automática porque eres el Responsable Funcional y el único Responsable Operativo del área.",
+              "Todas las tareas obligatorias del área quedaron completadas.",
           });
 
           const procesoListo = resultados.find(
