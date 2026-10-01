@@ -8,7 +8,7 @@ import { updateTareaEstado } from "../repositories/tareas-proceso.repository.js"
 import { updateProgressAfterTaskManagement } from "./task-progress.service.js";
 import {
   reconcileAreaCompletion,
-  shouldAutoApproveArea,
+  shouldAutoApproveTask,
 } from "./area-management.service.js";
 
 import { eventId } from "../utils/entity-id.js";
@@ -31,10 +31,13 @@ export type CompleteTaskResult = {
   comentario: string | null;
 
   autoAprobacion: boolean;
+  areaCompletada: boolean;
   listoParaCierre: boolean;
+  notificarFuncional: boolean;
 
   areaProcesoId: string;
   areaNombre: string;
+  responsableFuncionalId: string;
 };
 
 export async function completeTask(
@@ -80,9 +83,12 @@ export async function completeTask(
       tarea: tarea.tarea,
       comentario: tarea.comentario,
       autoAprobacion: false,
+      areaCompletada: false,
       listoParaCierre: false,
+      notificarFuncional: false,
       areaProcesoId: tarea.areaProcesoId,
       areaNombre: "",
+      responsableFuncionalId: "",
     };
   }
   if (tarea.requiereEvidencia) {
@@ -97,11 +103,7 @@ export async function completeTask(
     throw new Error(`Área del proceso no encontrada: ${tarea.areaProcesoId}`);
   }
 
-  const tareasArea = tareas.filter(
-    (item) => item.areaProcesoId === area.areaProcesoId,
-  );
-
-  const autoAprobacion = shouldAutoApproveArea(area, tareasArea);
+  const autoAprobacion = shouldAutoApproveTask(area, tarea);
 
   const nuevoEstado = autoAprobacion
     ? TASK_STATUS.COMPLETED
@@ -160,7 +162,7 @@ export async function completeTask(
   });
 
   let listoParaCierre = false;
-  let areaAutoAprobada = false;
+  let areaCompletada = false;
 
   if (autoAprobacion) {
     const reconciliation = await reconcileAreaCompletion(client, {
@@ -170,7 +172,7 @@ export async function completeTask(
       cid: input.cid,
     });
 
-    areaAutoAprobada = reconciliation.completed;
+    areaCompletada = reconciliation.completed;
     listoParaCierre = reconciliation.listoParaCierre;
   }
 
@@ -179,9 +181,12 @@ export async function completeTask(
     taskId: tarea.taskId,
     tarea: tarea.tarea,
     comentario,
-    autoAprobacion: areaAutoAprobada,
+    autoAprobacion,
+    areaCompletada,
     listoParaCierre,
+    notificarFuncional: !autoAprobacion,
     areaProcesoId: area.areaProcesoId,
     areaNombre: area.areaNombre,
+    responsableFuncionalId: area.responsableFuncionalId,
   };
 }
