@@ -15,6 +15,7 @@ oauth_config:
     bot:
       - chat:write
       - files:read
+      - files:write
       - users:read
       - lists:read
       - lists:write
