@@ -1,5 +1,4 @@
 import type { App } from "@slack/bolt";
-import type { WebClient } from "@slack/web-api";
 
 import { canAdministerPys } from "../services/authorization.service.js";
 import {
@@ -13,8 +12,7 @@ import { createAuditEvent } from "../repositories/auditoria.repository.js";
 import { eventId } from "../utils/entity-id.js";
 import { correlationId, logger } from "../utils/logger.js";
 import { getCanalNotificacionesTH } from "../services/runtime-config.service.js";
-import { getProcesos } from "../repositories/procesos-read.repository.js";
-import { PROCESS_STATUS } from "../constants/status.js";
+import { getHistoricalEmployeeOptions } from "../services/historical-employee-options.service.js";
 import {
   buildHistoricalErrorView,
   buildHistoricalLoadingView,
@@ -59,98 +57,7 @@ async function getSlackUserDisplayName(
 }
 
 
-type CachedHistoryUser = {
-  id: string;
-  label: string;
-  deleted: boolean;
-};
 
-type HistoryUserCache = {
-  users: CachedHistoryUser[];
-  expiresAt: number;
-};
-
-const HISTORY_USER_CACHE_TTL_MS = 5 * 60_000;
-let historyUserCache: HistoryUserCache | undefined;
-
-async function getHistoricalEmployeeOptions(
-  client: WebClient,
-  query: string,
-) {
-  const procesos = await getProcesos(client, { bypassCache: true });
-  const historicalEmployeeIds = new Set(
-    procesos
-      .filter((proceso) =>
-        [
-          PROCESS_STATUS.COMPLETED,
-          PROCESS_STATUS.COMPLETED_WITH_EXCEPTION,
-        ].some((status) => status === proceso.estado),
-      )
-      .map((proceso) => proceso.empleadoId),
-  );
-
-  let users = historyUserCache?.expiresAt && historyUserCache.expiresAt > Date.now()
-    ? historyUserCache.users
-    : undefined;
-
-  if (!users) {
-    const collected: CachedHistoryUser[] = [];
-    let cursor: string | undefined;
-
-    do {
-      const response = await client.users.list({
-        limit: 200,
-        ...(cursor ? { cursor } : {}),
-      });
-
-      for (const user of response.members ?? []) {
-        if (!user.id || !historicalEmployeeIds.has(user.id)) continue;
-
-        const profile = user.profile;
-        const name =
-          profile?.display_name_normalized?.trim() ||
-          profile?.real_name_normalized?.trim() ||
-          profile?.display_name?.trim() ||
-          profile?.real_name?.trim() ||
-          user.real_name?.trim() ||
-          user.name?.trim() ||
-          user.id;
-
-        collected.push({
-          id: user.id,
-          label: `${name}${user.deleted ? " · Inactivo" : ""}`,
-          deleted: Boolean(user.deleted),
-        });
-      }
-
-      const nextCursor = response.response_metadata?.next_cursor;
-      cursor = nextCursor && nextCursor.trim() !== "" ? nextCursor : undefined;
-    } while (cursor);
-
-    users = collected.sort((a, b) => a.label.localeCompare(b.label, "es"));
-    historyUserCache = {
-      users,
-      expiresAt: Date.now() + HISTORY_USER_CACHE_TTL_MS,
-    };
-  }
-
-  const normalizedQuery = query.trim().toLocaleLowerCase("es");
-
-  return users
-    .filter((user) =>
-      normalizedQuery === ""
-        ? true
-        : user.label.toLocaleLowerCase("es").includes(normalizedQuery),
-    )
-    .slice(0, 100)
-    .map((user) => ({
-      text: {
-        type: "plain_text" as const,
-        text: user.label.slice(0, 75),
-      },
-      value: user.id,
-    }));
-}
 export function registerProcessHistoryListeners(app: App): void {
   app.options("pys_history_employee_search", async ({ ack, payload, client }) => {
     try {
