@@ -17,6 +17,7 @@ function buildLoadingCloseProcessView(procesoId: string, cid: string) {
     type: "modal" as const,
 
     callback_id: "pys_close_process_loading",
+    external_id: `pys_close_${cid}`,
 
     private_metadata: JSON.stringify({
       procesoId,
@@ -36,6 +37,93 @@ function buildLoadingCloseProcessView(procesoId: string, cid: string) {
           text:
             "⏳ *Cargando información del proceso...*\n\n" +
             "Espera mientras validamos el Paz y Salvo.",
+        },
+      },
+    ],
+  };
+}
+
+function buildClosingProcessView(procesoId: string, cid: string) {
+  return {
+    type: "modal" as const,
+    callback_id: "pys_close_process_processing",
+    external_id: `pys_close_${cid}`,
+    private_metadata: JSON.stringify({ procesoId, cid }),
+    title: {
+      type: "plain_text" as const,
+      text: "Cerrar Paz y Salvo",
+    },
+    blocks: [
+      {
+        type: "section" as const,
+        text: {
+          type: "mrkdwn" as const,
+          text:
+            "⏳ *Cierre en proceso...*\n\n" +
+            "Estamos finalizando el Paz y Salvo y actualizando la información. " +
+            "No es necesario volver a intentar el cierre.",
+        },
+      },
+    ],
+  };
+}
+
+function buildCloseProcessSuccessView(
+  procesoId: string,
+  cid: string,
+  cierreExcepcion: boolean,
+) {
+  return {
+    type: "modal" as const,
+    callback_id: "pys_close_process_success",
+    external_id: `pys_close_${cid}`,
+    private_metadata: JSON.stringify({ procesoId, cid }),
+    title: {
+      type: "plain_text" as const,
+      text: "Cerrar Paz y Salvo",
+    },
+    close: {
+      type: "plain_text" as const,
+      text: "Cerrar",
+    },
+    blocks: [
+      {
+        type: "section" as const,
+        text: {
+          type: "mrkdwn" as const,
+          text:
+            (cierreExcepcion
+              ? "⚠️ *Paz y Salvo cerrado con excepción*"
+              : "✅ *Paz y Salvo cerrado correctamente*") +
+            `\n\nProceso: *${procesoId}*`,
+        },
+      },
+    ],
+  };
+}
+
+function buildCloseProcessSubmitErrorView(procesoId: string, cid: string) {
+  return {
+    type: "modal" as const,
+    callback_id: "pys_close_process_submit_error",
+    external_id: `pys_close_${cid}`,
+    private_metadata: JSON.stringify({ procesoId, cid }),
+    title: {
+      type: "plain_text" as const,
+      text: "Cerrar Paz y Salvo",
+    },
+    close: {
+      type: "plain_text" as const,
+      text: "Cerrar",
+    },
+    blocks: [
+      {
+        type: "section" as const,
+        text: {
+          type: "mrkdwn" as const,
+          text:
+            "⚠️ *No fue posible cerrar el Paz y Salvo.*\n\n" +
+            `Referencia: \`${cid}\``,
         },
       },
     ],
@@ -240,7 +328,10 @@ export function registerProcessCloseListeners(app: App): void {
       return;
     }
 
-    await ack();
+    await ack({
+      response_action: "update",
+      view: buildClosingProcessView(procesoId, cid),
+    });
 
     try {
       /*
@@ -262,6 +353,15 @@ export function registerProcessCloseListeners(app: App): void {
       });
 
       await publishHome(client, body.user.id);
+
+      await client.views.update({
+        external_id: `pys_close_${cid}`,
+        view: buildCloseProcessSuccessView(
+          result.procesoId,
+          cid,
+          result.cierreExcepcion,
+        ),
+      });
 
       logger.info(
         {
@@ -304,6 +404,24 @@ export function registerProcessCloseListeners(app: App): void {
 
         text: `No fue posible cerrar el Paz y Salvo. Referencia: ${cid}`,
       });
+
+      try {
+        await client.views.update({
+          external_id: `pys_close_${cid}`,
+          view: buildCloseProcessSubmitErrorView(procesoId, cid),
+        });
+      } catch (uiErr) {
+        logger.warn(
+          {
+            cid,
+            procesoId,
+            userId: body.user.id,
+            err: uiErr,
+            action: "process_close_submit_error_view_failed",
+          },
+          "No fue posible mostrar el error de cierre en el modal",
+        );
+      }
 
       await publishHome(client, body.user.id);
     }
