@@ -10,6 +10,7 @@ export function buildCloseProcessView(
     type: "modal",
 
     callback_id: "pys_close_process_submit",
+    external_id: `pys_close_${cid}`,
 
     private_metadata: JSON.stringify({
       procesoId,
