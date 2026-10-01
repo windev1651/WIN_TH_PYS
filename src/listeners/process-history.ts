@@ -77,7 +77,7 @@ async function getHistoricalEmployeeOptions(
   client: WebClient,
   query: string,
 ) {
-  const procesos = await getProcesos(client);
+  const procesos = await getProcesos(client, { bypassCache: true });
   const historicalEmployeeIds = new Set(
     procesos
       .filter((proceso) =>
