@@ -93,7 +93,7 @@ export async function searchHistoricalProcesses(
   filters: HistoricalProcessFilters,
 ): Promise<HistoricalProcessItem[]> {
   const [procesos, auditEvents] = await Promise.all([
-    getProcesos(client),
+    getProcesos(client, { bypassCache: true }),
     getAuditEvents(client),
   ]);
 
@@ -154,7 +154,7 @@ export async function getHistoricalProcessDataset(
   procesoId: string,
 ): Promise<HistoricalProcessDataset> {
   const [procesos, areas, tareas, evidencias, auditEvents] = await Promise.all([
-    getProcesos(client),
+    getProcesos(client, { bypassCache: true }),
     getAreasProceso(client, procesoId),
     getTareasProceso(client, procesoId),
     getEvidenciasByProceso(client, procesoId),
