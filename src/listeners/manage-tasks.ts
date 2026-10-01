@@ -477,6 +477,7 @@ export function registerManageTasksListeners(app: App): void {
         procesoId: string;
         tarea: string;
         nombreArchivo: string;
+        autoAprobacion: boolean;
       }> = [];
 
       for (const tarea of tareasVisibles) {
@@ -561,6 +562,7 @@ export function registerManageTasksListeners(app: App): void {
             procesoId: tarea.procesoId,
             tarea: tarea.tarea,
             nombreArchivo: archivo.name ?? archivo.id,
+            autoAprobacion: evidenceResult.autoAprobacion,
           });
 
           if (evidenceResult.notificarFuncional && employeeId) {
@@ -659,7 +661,8 @@ export function registerManageTasksListeners(app: App): void {
             (item) =>
               `• *Proceso:* ${item.procesoId}\n` +
               `  *Tarea:* ${item.tarea}\n` +
-              `  *Evidencia:* ${item.nombreArchivo}`,
+              `  *Evidencia:* ${item.nombreArchivo}\n` +
+              `  *Resultado:* ${item.autoAprobacion ? "Autoaprobada" : "Pendiente de revisión funcional"}`,
           )
           .join("\n\n");
 
@@ -668,12 +671,9 @@ export function registerManageTasksListeners(app: App): void {
 
           text:
             evidenciasRegistradas === 1
-              ? "📎 *Evidencia registrada correctamente*\n\n" +
-                `${detalle}\n\n` +
-                "Quedó pendiente de revisión por el Responsable Funcional."
+              ? "📎 *Evidencia registrada correctamente*\n\n" + detalle
               : `📎 *${evidenciasRegistradas} evidencias registradas correctamente*\n\n` +
-                `${detalle}\n\n` +
-                "Quedaron pendientes de revisión por los Responsables Funcionales.",
+                detalle,
         });
       }
 
