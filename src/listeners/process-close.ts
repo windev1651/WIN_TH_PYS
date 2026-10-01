@@ -3,6 +3,7 @@ import type { App } from "@slack/bolt";
 import { canAdministerPys } from "../services/authorization.service.js";
 import { closeProcess } from "../services/process-close.service.js";
 import { publishHome } from "../services/home-publish.service.js";
+import { invalidateHistoricalEmployeeOptionsCache } from "../services/historical-employee-options.service.js";
 import { getAreasProceso } from "../repositories/areas-proceso-read.repository.js";
 import { getProcesos } from "../repositories/procesos-read.repository.js";
 import { correlationId, logger } from "../utils/logger.js";
@@ -351,6 +352,8 @@ export function registerProcessCloseListeners(app: App): void {
         comentario,
         cid,
       });
+
+      invalidateHistoricalEmployeeOptionsCache();
 
       await publishHome(client, body.user.id);
 
