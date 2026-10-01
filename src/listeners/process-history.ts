@@ -1,4 +1,5 @@
 import type { App } from "@slack/bolt";
+import type { WebClient } from "@slack/web-api";
 
 import { canAdministerPys } from "../services/authorization.service.js";
 import {
@@ -73,7 +74,7 @@ const HISTORY_USER_CACHE_TTL_MS = 5 * 60_000;
 let historyUserCache: HistoryUserCache | undefined;
 
 async function getHistoricalEmployeeOptions(
-  client: Parameters<Parameters<App["options"]>[1]>[0]["client"],
+  client: WebClient,
   query: string,
 ) {
   const procesos = await getProcesos(client);
