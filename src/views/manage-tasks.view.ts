@@ -6,6 +6,10 @@ export type ManageTaskItem = TareaProcesoDetail & {
   empleadoId: string;
 };
 
+export function manageTasksExternalId(cid: string): string {
+  return `pys_manage_tasks_${cid}`;
+}
+
 export function buildManageTasksView(
   tareas: ManageTaskItem[],
   cid: string,
@@ -185,6 +189,7 @@ export function buildManageTasksView(
     type: "modal",
 
     callback_id: "pys_manage_tasks_submit",
+    external_id: manageTasksExternalId(cid),
 
     private_metadata: JSON.stringify({
       cid,
@@ -217,6 +222,7 @@ export function buildLoadingManageTasksView(cid: string): View {
     type: "modal",
 
     callback_id: "pys_manage_tasks_loading",
+    external_id: manageTasksExternalId(cid),
 
     private_metadata: JSON.stringify({
       cid,
