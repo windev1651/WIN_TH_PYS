@@ -262,7 +262,7 @@ export function registerProcessHistoryListeners(app: App): void {
         return;
       }
 
-      let openedViewId: string | undefined;
+      const pdfExternalId = `pys_history_pdf_${cid}`;
 
       try {
         const openResult =
@@ -276,7 +276,9 @@ export function registerProcessHistoryListeners(app: App): void {
                 view: buildHistoricalPdfLoadingView(procesoId, cid),
               });
 
-        openedViewId = openResult.view?.id;
+        if (!openResult.view?.id) {
+          throw new Error("Slack no retornó el ID del modal de generación PDF");
+        }
 
         if (!(await canAdministerPys(client, userId))) {
           throw new Error("Usuario no autorizado para generar históricos");
@@ -343,11 +345,22 @@ export function registerProcessHistoryListeners(app: App): void {
           );
         }
 
-        if (openedViewId) {
+        try {
           await client.views.update({
-            view_id: openedViewId,
+            external_id: pdfExternalId,
             view: buildHistoricalPdfSuccessView(procesoId, cid),
           });
+        } catch (uiErr) {
+          logger.warn(
+            {
+              cid,
+              procesoId,
+              userId,
+              err: uiErr,
+              action: "history_pdf_success_view_failed",
+            },
+            "El PDF fue generado, pero no fue posible actualizar el modal de éxito",
+          );
         }
 
         logger.info(
@@ -373,24 +386,22 @@ export function registerProcessHistoryListeners(app: App): void {
           "No fue posible generar el PDF histórico",
         );
 
-        if (openedViewId) {
-          try {
-            await client.views.update({
-              view_id: openedViewId,
-              view: buildHistoricalPdfErrorView(procesoId, cid),
-            });
-          } catch (updateErr) {
-            logger.warn(
-              {
-                cid,
-                procesoId,
-                userId,
-                err: updateErr,
-                action: "history_pdf_error_view_failed",
-              },
-              "No fue posible mostrar el error de generación PDF",
-            );
-          }
+        try {
+          await client.views.update({
+            external_id: pdfExternalId,
+            view: buildHistoricalPdfErrorView(procesoId, cid),
+          });
+        } catch (updateErr) {
+          logger.warn(
+            {
+              cid,
+              procesoId,
+              userId,
+              err: updateErr,
+              action: "history_pdf_error_view_failed",
+            },
+            "No fue posible mostrar el error de generación PDF",
+          );
         }
       }
     },
