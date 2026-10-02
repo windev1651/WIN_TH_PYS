@@ -11,6 +11,7 @@ import {
   textCell,
   userCell,
   updateListItem,
+  type ListWriteOptions,
 } from "../services/slack-list-write.service.js";
 import { getSelectOptionId } from "../services/slack-list-schema.service.js";
 
@@ -54,6 +55,7 @@ export async function approveAreaItem(
 export async function createAreaProceso(
   client: WebClient,
   area: AreaProcesoSnapshot,
+  options: ListWriteOptions = {},
 ): Promise<string> {
   const estadoOption = await getSelectOptionId(
     client,
@@ -76,7 +78,7 @@ export async function createAreaProceso(
     ),
     selectCell(slackColumns.areasProceso.estado, estadoOption),
     numberCell(slackColumns.areasProceso.ordenArea, area.ordenArea),
-  ]);
+  ], options);
 }
 
 export async function updateAreaEstado(
