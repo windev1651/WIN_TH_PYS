@@ -10,6 +10,7 @@ import { correlationId, logger } from "../utils/logger.js";
 import {
   buildManageTasksView,
   buildLoadingManageTasksView,
+  manageTasksExternalId,
 } from "../views/manage-tasks.view.js";
 import { getProcesos } from "../repositories/procesos-read.repository.js";
 import { getMaxTareasVista } from "../services/runtime-config.service.js";
@@ -31,10 +32,6 @@ function getErrorMessage(err: unknown): string {
   }
 
   return "Ocurrió un error inesperado.";
-}
-
-function manageTasksExternalId(cid: string): string {
-  return `pys_manage_tasks_${cid}`;
 }
 
 function buildManageTasksErrorView(
