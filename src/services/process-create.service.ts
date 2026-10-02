@@ -10,6 +10,7 @@ import type {
 } from "../types/process.js";
 import { logger } from "../utils/logger.js";
 import { deleteListItem } from "./slack-list-write.service.js";
+import { invalidateListReadCache } from "./slack-list-read.service.js";
 import { buildProcessSnapshot } from "./process-snapshot.service.js";
 import { createAuditEvent } from "../repositories/auditoria.repository.js";
 import { eventId } from "../utils/entity-id.js";
@@ -57,7 +58,9 @@ export async function createPazYSalvo(
     });
 
     for (const area of snapshot.areas) {
-      const itemId = await createAreaProceso(client, area);
+      const itemId = await createAreaProceso(client, area, {
+        invalidateCache: false,
+      });
 
       created.push({
         listId: slackLists.areasProceso.id,
@@ -65,14 +68,20 @@ export async function createPazYSalvo(
       });
     }
 
+    invalidateListReadCache(slackLists.areasProceso.id);
+
     for (const tarea of snapshot.tareas) {
-      const itemId = await createTareaProceso(client, tarea);
+      const itemId = await createTareaProceso(client, tarea, {
+        invalidateCache: false,
+      });
 
       created.push({
         listId: slackLists.tareasProceso.id,
         itemId,
       });
     }
+
+    invalidateListReadCache(slackLists.tareasProceso.id);
 
     const auditItemId = await createAuditEvent(client, {
       eventId: eventId(),
