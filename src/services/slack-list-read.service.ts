@@ -19,8 +19,13 @@ type CacheEntry = {
   expiresAt: number;
 };
 
+type InFlightRead = {
+  version: number;
+  promise: Promise<SlackListItem[]>;
+};
+
 const CACHE_TTL_MS = 60_000;
-const SHORT_CACHE_TTL_MS = 1_500;
+const SHORT_CACHE_TTL_MS = 15_000;
 
 const CACHEABLE_LIST_IDS = new Set([
   "F0BPY5HLAR5", // Parametros
@@ -34,7 +39,27 @@ const SHORT_CACHEABLE_LIST_IDS = new Set([
 ]);
 
 const listCache = new Map<string, CacheEntry>();
-const inFlightReads = new Map<string, Promise<SlackListItem[]>>();
+const inFlightReads = new Map<string, InFlightRead>();
+const listVersions = new Map<string, number>();
+
+function getListVersion(listId: string): number {
+  return listVersions.get(listId) ?? 0;
+}
+
+export function invalidateListReadCache(listId: string): void {
+  listCache.delete(listId);
+  shortListCache.delete(listId);
+  listVersions.set(listId, getListVersion(listId) + 1);
+
+  logger.info(
+    {
+      listId,
+      version: getListVersion(listId),
+      action: "slack_list_read_cache_invalidated",
+    },
+    "Cache de Slack List invalidado después de escritura",
+  );
+}
 
 function getCachedListItems(listId: string): SlackListItem[] | undefined {
   if (!CACHEABLE_LIST_IDS.has(listId)) {
@@ -218,33 +243,51 @@ export async function getAllListItems(
     );
   }
 
+  const version = getListVersion(listId);
   const existing = inFlightReads.get(listId);
 
-  if (existing) {
+  if (existing && existing.version === version) {
     logger.info(
       {
         listId,
+        version,
         action: "slack_list_read_joined",
       },
       "Lectura de Slack List reutilizada",
     );
 
-    return existing;
+    return existing.promise;
   }
 
   const request = fetchAllListItems(client, listId);
+  const inFlight: InFlightRead = {
+    version,
+    promise: request,
+  };
 
-  inFlightReads.set(listId, request);
+  inFlightReads.set(listId, inFlight);
 
   try {
     const items = await request;
 
-    cacheListItems(listId, items);
-    cacheShortListItems(listId, items);
+    if (getListVersion(listId) === version) {
+      cacheListItems(listId, items);
+      cacheShortListItems(listId, items);
+    } else {
+      logger.info(
+        {
+          listId,
+          readVersion: version,
+          currentVersion: getListVersion(listId),
+          action: "slack_list_read_cache_skip_stale",
+        },
+        "Lectura finalizada después de una escritura; resultado no cacheado",
+      );
+    }
 
     return items;
   } finally {
-    if (inFlightReads.get(listId) === request) {
+    if (inFlightReads.get(listId) === inFlight) {
       inFlightReads.delete(listId);
     }
   }
