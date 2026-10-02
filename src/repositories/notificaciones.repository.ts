@@ -43,6 +43,27 @@ type CreateNotificationInput = {
   idempotencyKey: string;
 };
 
+const NOTIFICATION_IDEMPOTENCY_CACHE_TTL_MS = 5 * 60_000;
+
+let sentNotificationKeysCache:
+  | {
+      keys: Set<string>;
+      expiresAt: number;
+    }
+  | undefined;
+
+const notificationItemKey = new Map<string, string>();
+
+function rememberNotificationSent(idempotencyKey: string): void {
+  if (!sentNotificationKeysCache) {
+    return;
+  }
+
+  sentNotificationKeysCache.keys.add(idempotencyKey);
+  sentNotificationKeysCache.expiresAt =
+    Date.now() + NOTIFICATION_IDEMPOTENCY_CACHE_TTL_MS;
+}
+
 const TYPE_OPTION_BY_LABEL: Record<NotificationType, string> = {
   Inicial: NOTIFICATION_TYPE.INITIAL,
   "Recordatorio diario": NOTIFICATION_TYPE.DAILY_REMINDER,
@@ -58,17 +79,33 @@ export async function notificationAlreadySent(
   client: WebClient,
   idempotencyKey: string,
 ): Promise<boolean> {
+  if (
+    sentNotificationKeysCache &&
+    sentNotificationKeysCache.expiresAt > Date.now()
+  ) {
+    return sentNotificationKeysCache.keys.has(idempotencyKey);
+  }
+
   const items = await getAllListItems(client, slackLists.notificaciones.id);
+  const keys = new Set<string>();
 
-  return items.some((item) => {
+  for (const item of items) {
     const key = getTextField(item, slackColumns.notificaciones.idempotencyKey);
-
     const resultado = item.fields?.find(
       (field) => field.column_id === slackColumns.notificaciones.resultado,
     )?.select?.[0];
 
-    return key === idempotencyKey && resultado === NOTIFICATION_RESULT.SENT;
-  });
+    if (key && resultado === NOTIFICATION_RESULT.SENT) {
+      keys.add(key);
+    }
+  }
+
+  sentNotificationKeysCache = {
+    keys,
+    expiresAt: Date.now() + NOTIFICATION_IDEMPOTENCY_CACHE_TTL_MS,
+  };
+
+  return keys.has(idempotencyKey);
 }
 
 export async function createNotification(
@@ -118,7 +155,15 @@ export async function createNotification(
     );
   }
 
-  return createListItem(client, slackLists.notificaciones.id, fields);
+  const itemId = await createListItem(
+    client,
+    slackLists.notificaciones.id,
+    fields,
+  );
+
+  notificationItemKey.set(itemId, input.idempotencyKey);
+
+  return itemId;
 }
 
 export async function markNotificationSent(
@@ -139,6 +184,13 @@ export async function markNotificationSent(
 
     textCell(slackColumns.notificaciones.dmMessageTs, input.messageTs),
   ]);
+
+  const idempotencyKey = notificationItemKey.get(slackItemId);
+
+  if (idempotencyKey) {
+    rememberNotificationSent(idempotencyKey);
+    notificationItemKey.delete(slackItemId);
+  }
 }
 
 export async function markNotificationError(
@@ -157,4 +209,6 @@ export async function markNotificationError(
       errorDetalle.slice(0, 2000),
     ),
   ]);
+
+  notificationItemKey.delete(slackItemId);
 }
