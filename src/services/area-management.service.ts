@@ -44,7 +44,12 @@ export async function reconcileAreaCompletion(
    * del snapshot que tenía approveTask() al iniciar.
    */
   const [areas, tareas] = await Promise.all([
-    getAreasProceso(client, input.procesoId, { bypassCache: true }),
+    /*
+     * Las escrituras de tareas invalidan TareasProceso, no AreasProceso.
+     * Reutilizar el snapshot corto de áreas evita dos páginas adicionales
+     * por cada reconciliación sin perder frescura sobre el estado de tareas.
+     */
+    getAreasProceso(client, input.procesoId),
 
     getTareasProceso(client, input.procesoId, { bypassCache: true }),
   ]);
