@@ -275,6 +275,7 @@ export function buildHistoricalPdfLoadingView(
   return {
     type: "modal",
     callback_id: "pys_history_pdf_loading",
+    external_id: `pys_history_pdf_${cid}`,
     private_metadata: JSON.stringify({ procesoId, cid }),
     title: {
       type: "plain_text",
@@ -305,6 +306,7 @@ export function buildHistoricalPdfSuccessView(
   return {
     type: "modal",
     callback_id: "pys_history_pdf_success",
+    external_id: `pys_history_pdf_${cid}`,
     private_metadata: JSON.stringify({ procesoId, cid }),
     title: {
       type: "plain_text",
@@ -335,6 +337,7 @@ export function buildHistoricalPdfErrorView(
   return {
     type: "modal",
     callback_id: "pys_history_pdf_error",
+    external_id: `pys_history_pdf_${cid}`,
     private_metadata: JSON.stringify({ procesoId, cid }),
     title: {
       type: "plain_text",
