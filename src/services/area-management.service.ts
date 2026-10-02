@@ -287,22 +287,9 @@ export async function approveArea(
   };
 }
 
-export function shouldAutoApproveArea(
+export function shouldAutoApproveTask(
   area: AreaProcesoDetail,
-  tareasArea: TareaProcesoDetail[],
+  tarea: TareaProcesoDetail,
 ): boolean {
-  if (tareasArea.length === 0) {
-    return false;
-  }
-
-  const responsablesOperativos = new Set(
-    tareasArea
-      .map((tarea) => tarea.responsableOperativoId)
-      .filter((userId): userId is string => Boolean(userId)),
-  );
-
-  return (
-    responsablesOperativos.size === 1 &&
-    responsablesOperativos.has(area.responsableFuncionalId)
-  );
+  return tarea.responsableOperativoId === area.responsableFuncionalId;
 }

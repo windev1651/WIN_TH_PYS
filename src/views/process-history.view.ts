@@ -39,11 +39,12 @@ export function buildHistoricalSearchView(cid: string): View {
           text: "Persona",
         },
         element: {
-          type: "users_select",
-          action_id: "employee_id",
+          type: "external_select",
+          action_id: "pys_history_employee_search",
+          min_query_length: 0,
           placeholder: {
             type: "plain_text",
-            text: "Cualquier persona",
+            text: "Buscar persona",
           },
         },
       },
@@ -274,6 +275,7 @@ export function buildHistoricalPdfLoadingView(
   return {
     type: "modal",
     callback_id: "pys_history_pdf_loading",
+    external_id: `pys_history_pdf_${cid}`,
     private_metadata: JSON.stringify({ procesoId, cid }),
     title: {
       type: "plain_text",
@@ -304,6 +306,7 @@ export function buildHistoricalPdfSuccessView(
   return {
     type: "modal",
     callback_id: "pys_history_pdf_success",
+    external_id: `pys_history_pdf_${cid}`,
     private_metadata: JSON.stringify({ procesoId, cid }),
     title: {
       type: "plain_text",
@@ -334,6 +337,7 @@ export function buildHistoricalPdfErrorView(
   return {
     type: "modal",
     callback_id: "pys_history_pdf_error",
+    external_id: `pys_history_pdf_${cid}`,
     private_metadata: JSON.stringify({ procesoId, cid }),
     title: {
       type: "plain_text",

@@ -4,7 +4,10 @@ import type { AreaProcesoDetail } from "../types/process-detail.js";
 import { createAuditEvent } from "../repositories/auditoria.repository.js";
 import { getAreasProceso } from "../repositories/areas-proceso-read.repository.js";
 import { getProcesos } from "../repositories/procesos-read.repository.js";
-import { updateProcesoEstado } from "../repositories/procesos.repository.js";
+import {
+  updateProcesoAvance,
+  updateProcesoEstado,
+} from "../repositories/procesos.repository.js";
 import { eventId } from "../utils/entity-id.js";
 
 import {
@@ -80,6 +83,17 @@ export async function recalculateProcessState(
       cambioEstado: false,
       listoParaCierre: proceso.estado === PROCESS_STATUS.COMPLETED,
     };
+  }
+
+  /*
+   * Invariante de negocio:
+   * si todas las áreas están completadas, todas las tareas operativas
+   * computables ya fueron gestionadas. El avance operativo debe quedar
+   * explícitamente en 100 %, incluso si una lectura anterior quedó
+   * temporalmente desfasada durante una gestión concurrente.
+   */
+  if (todasLasAreasCompletadas && proceso.porcentajeAvance !== 100) {
+    await updateProcesoAvance(client, proceso.slackItemId, 100);
   }
 
   if (proceso.estado === estadoNuevo) {

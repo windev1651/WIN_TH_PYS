@@ -21,7 +21,7 @@ import { getAreasProceso } from "../repositories/areas-proceso-read.repository.j
 import { updateProgressAfterTaskManagement } from "./task-progress.service.js";
 import {
   reconcileAreaCompletion,
-  shouldAutoApproveArea,
+  shouldAutoApproveTask,
 } from "./area-management.service.js";
 
 import { approveEvidence } from "./evidence-review.service.js";
@@ -52,6 +52,14 @@ export type RegisterEvidenceResult = {
 
   slackFileId: string;
   nombreOriginal: string;
+
+  autoAprobacion: boolean;
+  notificarFuncional: boolean;
+  areaProcesoId: string;
+  areaNombre: string;
+  responsableFuncionalId: string;
+  tarea: string;
+  comentario: string;
 };
 
 export async function registerEvidence(
@@ -139,11 +147,7 @@ export async function registerEvidence(
     throw new Error(`Área del proceso no encontrada: ${tarea.areaProcesoId}`);
   }
 
-  const tareasArea = tareas.filter(
-    (item) => item.areaProcesoId === area.areaProcesoId,
-  );
-
-  const autoAprobacion = shouldAutoApproveArea(area, tareasArea);
+  const autoAprobacion = shouldAutoApproveTask(area, tarea);
 
   if (tarea.responsableOperativoId !== input.usuarioId) {
     throw new Error("El usuario no es responsable de esta tarea");
@@ -230,6 +234,13 @@ export async function registerEvidence(
       taskId: input.taskId,
       slackFileId: evidenciaPendiente.slackFileId,
       nombreOriginal: evidenciaPendiente.nombreOriginal,
+      autoAprobacion: false,
+      notificarFuncional: false,
+      areaProcesoId: area.areaProcesoId,
+      areaNombre: area.areaNombre,
+      responsableFuncionalId: area.responsableFuncionalId,
+      tarea: tarea.tarea,
+      comentario,
     };
   }
 
@@ -325,5 +336,12 @@ export async function registerEvidence(
     taskId: input.taskId,
     slackFileId: archivo.id,
     nombreOriginal: archivo.name ?? archivo.id,
+    autoAprobacion,
+    notificarFuncional: !autoAprobacion,
+    areaProcesoId: area.areaProcesoId,
+    areaNombre: area.areaNombre,
+    responsableFuncionalId: area.responsableFuncionalId,
+    tarea: tarea.tarea,
+    comentario,
   };
 }
