@@ -246,17 +246,42 @@ export async function getAllListItems(
   const version = getListVersion(listId);
   const existing = inFlightReads.get(listId);
 
-  if (existing && existing.version === version) {
+  if (existing) {
+    if (existing.version === version) {
+      logger.info(
+        {
+          listId,
+          version,
+          action: "slack_list_read_joined",
+        },
+        "Lectura de Slack List reutilizada",
+      );
+
+      return existing.promise;
+    }
+
+    /*
+     * Hubo una escritura mientras la lectura anterior seguía en curso.
+     * No lanzamos otra lectura completa en paralelo: esperamos la anterior
+     * y luego todos los consumidores convergen en una única lectura fresca.
+     */
     logger.info(
       {
         listId,
-        version,
-        action: "slack_list_read_joined",
+        readVersion: existing.version,
+        currentVersion: version,
+        action: "slack_list_read_waiting_previous_version",
       },
-      "Lectura de Slack List reutilizada",
+      "Lectura fresca espera una lectura anterior para evitar concurrencia innecesaria",
     );
 
-    return existing.promise;
+    try {
+      await existing.promise;
+    } catch {
+      // La siguiente llamada realizará el intento fresco.
+    }
+
+    return getAllListItems(client, listId, options);
   }
 
   const request = fetchAllListItems(client, listId);
