@@ -33,11 +33,13 @@ function buildTaskReviewProcessingView(
   areaProcesoId: string,
   cid: string,
   message: string,
+  externalId?: string,
 ) {
   return {
     type: "modal" as const,
 
     callback_id: "pys_task_review_processing",
+    ...(externalId ? { external_id: externalId } : {}),
 
     private_metadata: JSON.stringify({
       areaProcesoId,
@@ -69,11 +71,13 @@ function buildTaskReviewSuccessView(
   areaProcesoId: string,
   cid: string,
   message: string,
+  externalId?: string,
 ) {
   return {
     type: "modal" as const,
 
     callback_id: "pys_manage_area_submit",
+    ...(externalId ? { external_id: externalId } : {}),
     notify_on_close: true,
 
     private_metadata: JSON.stringify({
@@ -167,6 +171,7 @@ export function registerTaskReviewListeners(app: App): void {
             areaProcesoId,
             cid,
             "Aprobando tarea...",
+            areaModalExternalId,
           ),
         });
       }
@@ -216,6 +221,7 @@ export function registerTaskReviewListeners(app: App): void {
                 result.listoParaCierre
                   ? "Área completada. El Paz y Salvo quedó listo para cierre por Talento Humano."
                   : "Área completada correctamente.",
+                areaModalExternalId,
               ),
             });
           } else {
