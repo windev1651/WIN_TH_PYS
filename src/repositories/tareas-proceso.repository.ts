@@ -19,6 +19,7 @@ import { TASK_STATUS } from "../constants/status.js";
 export async function createTareaProceso(
   client: WebClient,
   tarea: TareaProcesoSnapshot,
+  options: ListWriteOptions = {},
 ): Promise<string> {
   const estadoOption = await getSelectOptionId(
     client,
@@ -56,7 +57,12 @@ export async function createTareaProceso(
     );
   }
 
-  return createListItem(client, slackLists.tareasProceso.id, fields);
+  return createListItem(
+    client,
+    slackLists.tareasProceso.id,
+    fields,
+    options,
+  );
 }
 
 export async function updateTareaEstado(
