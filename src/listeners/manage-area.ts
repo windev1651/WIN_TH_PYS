@@ -4,11 +4,13 @@ import { correlationId, logger } from "../utils/logger.js";
 import { publishHome } from "../services/home-publish.service.js";
 import { loadManageAreaView } from "../services/manage-area-view.service.js";
 import { isUserBusy } from "../services/interaction-lock.service.js";
+import { manageAreaExternalId } from "../views/manage-area.view.js";
 
 function buildLoadingAreaView(areaProcesoId: string, cid: string) {
   return {
     type: "modal" as const,
     callback_id: "pys_manage_area_loading",
+    external_id: manageAreaExternalId(cid),
 
     private_metadata: JSON.stringify({
       areaProcesoId,
@@ -163,6 +165,7 @@ export function registerManageAreaListeners(app: App): void {
           view: {
             type: "modal",
             callback_id: "pys_manage_area_error",
+            external_id: manageAreaExternalId(cid),
 
             private_metadata: JSON.stringify({
               areaProcesoId,
