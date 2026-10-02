@@ -18,6 +18,10 @@ export type ManageAreaData = {
   tareas: ManageAreaTask[];
 };
 
+export function manageAreaExternalId(cid: string): string {
+  return `pys_manage_area_${cid}`;
+}
+
 function taskEmoji(estado: string): string {
   switch (estado) {
     case TASK_STATUS.COMPLETED:
@@ -199,6 +203,7 @@ export function buildManageAreaView(data: ManageAreaData, cid: string): View {
     type: "modal",
 
     callback_id: "pys_manage_area_submit",
+    external_id: manageAreaExternalId(cid),
     notify_on_close: true,
 
     private_metadata: JSON.stringify({
