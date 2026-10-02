@@ -8,6 +8,26 @@ import {
   tryAcquireOperationLock,
 } from "../services/interaction-lock.service.js";
 import { loadManageAreaView } from "../services/manage-area-view.service.js";
+import { manageAreaExternalId } from "../views/manage-area.view.js";
+
+function getAreaModalExternalId(
+  body: { view?: { external_id?: string; private_metadata?: string } },
+  fallbackCid: string,
+): string {
+  if (body.view?.external_id) {
+    return body.view.external_id;
+  }
+
+  try {
+    const metadata = JSON.parse(body.view?.private_metadata || "{}") as {
+      cid?: string;
+    };
+
+    return manageAreaExternalId(metadata.cid ?? fallbackCid);
+  } catch {
+    return manageAreaExternalId(fallbackCid);
+  }
+}
 
 function buildTaskReviewProcessingView(
   areaProcesoId: string,
@@ -137,9 +157,11 @@ export function registerTaskReviewListeners(app: App): void {
         return;
       }
 
+      const areaModalExternalId = getAreaModalExternalId(body, cid);
+
       if ("view" in body && body.view?.id) {
         await client.views.update({
-          view_id: body.view.id,
+          external_id: areaModalExternalId,
 
           view: buildTaskReviewProcessingView(
             areaProcesoId,
@@ -187,7 +209,7 @@ export function registerTaskReviewListeners(app: App): void {
         if ("view" in body && body.view?.id) {
           if (result.areaCompleted) {
             await client.views.update({
-              view_id: body.view.id,
+              external_id: areaModalExternalId,
               view: buildTaskReviewSuccessView(
                 result.areaProcesoId,
                 cid,
@@ -204,7 +226,7 @@ export function registerTaskReviewListeners(app: App): void {
             });
 
             await client.views.update({
-              view_id: body.view.id,
+              external_id: areaModalExternalId,
               view: manageAreaView,
             });
           }
