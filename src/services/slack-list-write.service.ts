@@ -16,6 +16,14 @@ type UpdateListItemArgs = Parameters<
 
 type SlackListItemCellUpdate = UpdateListItemArgs["cells"][number];
 
+export type ListWriteOptions = {
+  invalidateCache?: boolean;
+};
+
+function shouldInvalidate(options: ListWriteOptions): boolean {
+  return options.invalidateCache !== false;
+}
+
 export function textCell(columnId: string, text: string): SlackListItemField {
   return {
     column_id: columnId,
@@ -86,6 +94,7 @@ export async function createListItem(
   client: WebClient,
   listId: string,
   fields: SlackListItemField[],
+  options: ListWriteOptions = {},
 ): Promise<string> {
   const response = await client.slackLists.items.create({
     list_id: listId,
@@ -98,7 +107,9 @@ export async function createListItem(
     throw new Error(`Slack no devolvió item.id al crear registro en ${listId}`);
   }
 
-  invalidateListReadCache(listId);
+  if (shouldInvalidate(options)) {
+    invalidateListReadCache(listId);
+  }
 
   return itemId;
 }
@@ -107,13 +118,16 @@ export async function deleteListItem(
   client: WebClient,
   listId: string,
   itemId: string,
+  options: ListWriteOptions = {},
 ): Promise<void> {
   await client.slackLists.items.delete({
     list_id: listId,
     id: itemId,
   });
 
-  invalidateListReadCache(listId);
+  if (shouldInvalidate(options)) {
+    invalidateListReadCache(listId);
+  }
 }
 
 export async function updateListItem(
@@ -121,6 +135,7 @@ export async function updateListItem(
   listId: string,
   rowId: string,
   fields: SlackListItemField[],
+  options: ListWriteOptions = {},
 ): Promise<void> {
   const cells: SlackListItemCellUpdate[] = fields.map((field) => ({
     ...field,
@@ -132,7 +147,9 @@ export async function updateListItem(
     cells,
   });
 
-  invalidateListReadCache(listId);
+  if (shouldInvalidate(options)) {
+    invalidateListReadCache(listId);
+  }
 }
 
 export function linkCell(
