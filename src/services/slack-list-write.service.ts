@@ -1,5 +1,7 @@
 import type { WebClient } from "@slack/web-api";
 
+import { invalidateListReadCache } from "./slack-list-read.service.js";
+
 type CreateListItemArgs = Parameters<
   WebClient["slackLists"]["items"]["create"]
 >[0];
@@ -96,6 +98,8 @@ export async function createListItem(
     throw new Error(`Slack no devolvió item.id al crear registro en ${listId}`);
   }
 
+  invalidateListReadCache(listId);
+
   return itemId;
 }
 
@@ -108,6 +112,8 @@ export async function deleteListItem(
     list_id: listId,
     id: itemId,
   });
+
+  invalidateListReadCache(listId);
 }
 
 export async function updateListItem(
@@ -125,6 +131,8 @@ export async function updateListItem(
     list_id: listId,
     cells,
   });
+
+  invalidateListReadCache(listId);
 }
 
 export function linkCell(
